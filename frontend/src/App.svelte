@@ -24,6 +24,7 @@
 	  for (let t = 0; t <= 1; t += 1 / steps) {
 		curve.push(deCasteljau(points, t));
 	  }
+	  curve.push(points[points.length - 1]);
 	  return curve;
 	}
   
@@ -49,13 +50,63 @@
 		link.click();
 	  });
 	}
+
+	document.addEventListener('DOMContentLoaded', () => {
+	  addControlPoint(20, 20);
+	  addControlPoint(50, 100);
+	  addControlPoint(100, 100);
+	});
+
+	document.addEventListener('mousedown', (event) => {
+		const field = document.querySelector('.field');
+		const rect = field.getBoundingClientRect();
+		const mouseX = event.clientX - rect.left;
+		const mouseY = event.clientY - rect.top;
+
+		let selectedPointIndex = null;
+
+		$controlPoints.forEach((point, index) => {
+			const pointX = point.x / 144 * rect.width;
+			const pointY = rect.height - (point.y / 144 * rect.height);
+			const distance = Math.sqrt((mouseX - pointX) ** 2 + (mouseY - pointY) ** 2);
+			if (distance < 10) {
+				selectedPointIndex = index;
+			}
+		});
+
+		if (selectedPointIndex !== null) {
+			const movePoint = (moveEvent) => {
+				const newMouseX = moveEvent.clientX - rect.left;
+				const newMouseY = moveEvent.clientY - rect.top;
+				const newX = newMouseX / rect.width * 144;
+				const newY = 144 - (newMouseY / rect.height * 144);
+
+				controlPoints.update(points => {
+					points[selectedPointIndex] = { x: newX, y: newY };
+					return points;
+				});
+				generateBezierCurve();
+			};
+
+			const stopMove = () => {
+				document.removeEventListener('mousemove', movePoint);
+				document.removeEventListener('mouseup', stopMove);
+			};
+
+			document.addEventListener('mousemove', movePoint);
+			document.addEventListener('mouseup', stopMove);
+		}
+	});
+
+
+
 </script>
   
 <style>
 	h1 {
 		text-align: center;
 		font-size: 1rem;
-		font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+		font-family: Arial, Helvetica, sans-serif;
 	}
 
 	.container {
@@ -71,20 +122,23 @@
 	  background: url('/field-image.jpg') no-repeat center center;
 	  background-size: cover;
 	  border: 1px solid #ccc;
+	  border-radius: 10px;
 	}
 
 	.point {
 	  position: absolute;
 	  width: 10px;
 	  height: 10px;
-	  background: red;
+	  background: #B1F0F7;
 	  border-radius: 50%;
 	  transform: translate(-50%, -50%);
 	}
 
 	.curve {
-	  stroke: blue;
+	  stroke: #B1F0F7;
+	  stroke-width: 0.7;
 	  fill: none;
+	
 	}
 
 	.control-menu {
@@ -117,33 +171,29 @@
 	  background: #d0d0d0;
 	}
 
-	.control-menu > button:disabled {
-	  background: #f0f0f0;
-	  color: #ccc;
-	  cursor: not-allowed;
+	.section-title {
+	  font-size: 1.25rem;
+	  font-weight: bold;
 	}
-
 </style>
 
-  
 <div>
 	<h1>Bezier Path Generator</h1>
 	<div class="container">
 	  <div class="field">
 		{#each $controlPoints as { x, y }, i}
-		  <div class="point" style="left: {x}%; top: {y}%;"></div>
+		  <div class="point" style="left: {x / 144 * 100}%; bottom: {(y - 2.5) / 144 * 100}%;"></div>
 		{/each}
-		<!-- change this viewbox for changing coords -->
-		<svg viewBox="0 0 100 50" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
+		<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
 		  <polyline
 			class="curve"
-			points="{$bezierCurvePoints.map(point => `${point.x},${point.y}`).join(' ')}"
+			points="{$bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
 		  />
 		</svg>
 	  </div>
   
 	  <div class="control-menu">
-		<h1>Control Points</h1>
+		<h1 class="section-title">Control Points</h1>
 		<div>
 		  <label for="x">X:</label>
 		  <input type="number" id="x" bind:value={x} />
