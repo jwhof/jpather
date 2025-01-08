@@ -8,6 +8,9 @@
 	let x = 0;
 	let y = 0;
 
+	let robotLength = 18;
+	let robotWidth = 18;
+
 	function getRandomBrightColor() {
 		const r = Math.floor(Math.random() * 128 + 128);
 		const g = Math.floor(Math.random() * 128 + 128);
@@ -59,9 +62,9 @@
 
 	document.addEventListener('DOMContentLoaded', () => {
 		addPath();
-		addControlPointToPath(0, 24, 24);
-		addControlPointToPath(0, 24, 96);
 		addControlPointToPath(0, 96, 96);
+		addControlPointToPath(0, 48, 48);
+		addControlPointToPath(0, 24, 96);
 	});
 
 	document.addEventListener('mousedown', (event) => {
@@ -146,9 +149,36 @@
 			return paths;
 		});
 	}
+
+	function toggleColorPicker(pathId) {
+		paths.update(paths => {
+			const path = paths.find(p => p.id === pathId);
+			if (path) {
+				path.showColorPicker = !path.showColorPicker;
+			}
+			return paths;
+		});
+	}
+
+	function updatePathColor(pathId, color) {
+		paths.update(paths => {
+			const path = paths.find(p => p.id === pathId);
+			if (path) {
+				path.color = color;
+			}
+			return paths;
+		});
+	}
 </script>
   
 <style>
+	* {
+		font-family: "Space Grotesk", serif;
+		font-optical-sizing: auto;
+		font-weight: 700;
+		font-style: normal;
+	}
+
 	h1 {
 		text-align: center;
 		font-size: 1rem;
@@ -162,6 +192,13 @@
 		min-width: 1150px;
 	}
 
+	.container > * {
+		margin: 0.3rem;
+		box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.3);
+		border-radius: 20px;
+		
+	}
+
 	.field {
 		position: relative;
 		width: 90vh;
@@ -173,7 +210,6 @@
 		background: url('/field-image.jpg') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
-		border-radius: 10px;
 	}
 
 	.point {
@@ -182,6 +218,13 @@
 		height: 1.5%;
 		border-radius: 50%;
 		transform: translate(-50%, 50%);
+		z-index: 1;
+	}
+
+	.point:hover {
+		width: 2.2%;
+		height: 2.2%;
+		cursor: grab;
 	}
 
 	.curve {
@@ -191,13 +234,12 @@
 
 	.menu {
 		display: flex;
-		flex-direction: column;
-		justify-content: left;
-		align-items: flex-start;
+		justify-content: space-between;
+		align-items: left;
 		padding: 1rem;
-		border: 1px solid #ccc;
 		flex-grow: 1;
 	}
+
 
 	.menu > * {
 		margin: 0.5rem;
@@ -214,8 +256,9 @@
 		justify-content: left;
 		align-items: flex-start;
 		padding: 1rem;
-		border: 1px solid #ccc;
 		flex-grow: 1;
+		max-height: 90vh;
+		overflow-y: auto;
 	}
 
 	.paths > * {
@@ -240,27 +283,57 @@
 	}
 
 	button:hover {
-		background: #8EDCE6;
+		background: #8EDCE6 !important;
 	}
 
 	.path {
-		border: 1px solid #ccc;
 		margin: 0.5rem 0;
 		padding: 0.5rem;
-		border-radius: 5px;
+		border-radius: 10px;
+		border: 4px solid;
 	}
 
 	.path-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		cursor: pointer;
+		flex-direction: row;
+		
 	}
 
 	.path-control-points {
 		display: block;
 	}
 
+	.standard-input-box {
+		width: 125px;
+	}
+
+	.path-header > button {
+		background: #B1F0F7;
+		border: none;
+		padding: 0.5rem 1.5rem;
+		margin: 0.3rem;
+		border-radius: 5px;
+		cursor: pointer;
+		font-size: 0.75rem;
+	}
+
+	.color-circle {
+		-webkit-appearance: none;
+		-moz-appearance: none;
+		appearance: none;
+		width: 20px;
+		height: 20px;
+		border: none;
+		cursor: pointer;
+		margin: 0.3rem;
+	}
+
+	.color-circle::-webkit-color-swatch {
+		border-radius: 20px;
+		border: none;
+	}
 </style>
 
 <div>
@@ -270,10 +343,49 @@
 	</div>
 	
 	<div class="container">
+		<div class="menu">
+			<div>
+				<h2 class="section-title">Robot Options</h2>
+				<div>
+					<label for="robot-length">Robot Length:</label>
+					<input id="robot-length" class="standard-input-box" type="number" step="0.01" bind:value={robotLength} />
+				</div>
+				<div>
+					<label for="robot-width">Robot Width:</label>
+					<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={robotWidth} />
+				</div>
+			</div>
+		</div>
+		
+		<div class="paths">
+			{#each $paths as path}
+				<div class="path" style="border-color: {path.color};">
+					<div class="path-header">
+						<input type="color" class="color-circle" style="background-color: {path.color};"bind:value={path.color} on:input={() => updatePathColor(path.id, path.color)} />
+						<p>Path {path.id}</p>
+						<button id="add-control-point" on:click={() => addControlPointToPath(path.id, x, y)}>Add Control Point</button>
+					</div>
+						<div class="path-control-points">
+							{#each path.controlPoints as { x, y }, i}
+								<div>
+									<label for="control-point-{path.id}-{i}">Control Point {i + 1}:</label>
+									<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+									<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+								</div>
+							{/each}
+					</div>
+				</div>
+			{/each}
+
+			<button on:click={() => {addPath(); generateBezierCurve($paths.length - 1);}}>Add Path</button>
+		</div>
+
 		<div class="field">
 			{#each $paths as path}
 				{#each path.controlPoints as { x, y }}
+				<div class="hover-point">
 					<div class="point" style="left: {x / 144 * 100}%; bottom: {y / 144 * 100}%; background: {path.color};"></div>
+				</div>
 				{/each}
 			{/each}
 			<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
@@ -286,32 +398,7 @@
 				{/each}
 			</svg>
 		</div>
-  
-		<div class="menu">
-			<div>
-				<h2 class="section-title">Robot Options</h2>
 
-			</div>
-		</div>
-		
-		<div class="paths">
-			{#each $paths as path}
-				<div class="path">
-					<div class="path-header"></div>
-						<p>Path {path.id}</p>
-						<button on:click={() => addControlPointToPath(path.id, x, y)}>Add Control Point</button>
 
-						<div class="path-control-points">
-							{#each path.controlPoints as { x, y }, i}
-								<div>
-									<p>Control Point {i + 1}: ({x % 1 === 0 ? x : x.toFixed(3)}, {y % 1 === 0 ? y : y.toFixed(3)})</p>
-								</div>
-							{/each}
-					</div>
-				</div>
-			{/each}
-
-			<button on:click={() => {addPath(); generateBezierCurve($paths.length - 1);}}>Add Path</button>
-		</div>
 	</div>
 </div>
