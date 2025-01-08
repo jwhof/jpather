@@ -15,22 +15,6 @@
 		return `rgb(${r}, ${g}, ${b})`;
 	}
   
-	function addControlPoint(x, y) {
-		if (x == 0 && y == 0) {
-			const midpoint = deCasteljau($controlPoints, 0.5);
-			const randomX = midpoint.x + (Math.random() - 0.5) * 100;
-			const randomY = midpoint.y + (Math.random() - 0.5) * 100;
-			addControlPoint(randomX, randomY);
-		} else {
-			controlPoints.update(points => {
-				const newPoints = [...points];
-				newPoints.splice(points.length - 1, 0, { x, y });
-				return newPoints;
-			});
-			generateBezierCurve();
-		}
-	}
-  
 	function generateBezierCurve(pathId) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
@@ -156,7 +140,7 @@
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
 			if (path) {
-				path.controlPoints.push({ x, y });
+				path.controlPoints.splice(path.controlPoints.length - 1, 0, { x, y });
 				path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
 			}
 			return paths;
@@ -311,13 +295,14 @@
 					<div class="path-header"></div>
 						<p>Path {path.id}</p>
 						<button on:click={() => addControlPointToPath(path.id, x, y)}>Add Control Point</button>
-				</div>
-				<div class="path-control-points">
-						{#each path.controlPoints as { x, y }, i}
-							<div>
-								<p>Control Point {i + 1}: ({x % 1 === 0 ? x : x.toFixed(3)}, {y % 1 === 0 ? y : y.toFixed(3)})</p>
-							</div>
-						{/each}
+
+						<div class="path-control-points">
+							{#each path.controlPoints as { x, y }, i}
+								<div>
+									<p>Control Point {i + 1}: ({x % 1 === 0 ? x : x.toFixed(3)}, {y % 1 === 0 ? y : y.toFixed(3)})</p>
+								</div>
+							{/each}
+					</div>
 				</div>
 			{/each}
 
