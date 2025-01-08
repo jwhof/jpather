@@ -59,9 +59,9 @@
 
 	document.addEventListener('DOMContentLoaded', () => {
 		addPath();
-		addControlPointToPath(0, 20, 20);
-		addControlPointToPath(0, 20, 100);
-		addControlPointToPath(0, 100, 100);
+		addControlPointToPath(0, 24, 24);
+		addControlPointToPath(0, 24, 96);
+		addControlPointToPath(0, 96, 96);
 	});
 
 	document.addEventListener('mousedown', (event) => {
@@ -159,12 +159,17 @@
 		display: flex;
 		justify-content: space-between;
 		width: 100%;
+		min-width: 1150px;
 	}
 
 	.field {
 		position: relative;
-		height: 90vh;
 		width: 90vh;
+		height: 90vh;
+		max-width: 90vw;
+		max-height: 90vw;
+		min-width: 500px;
+		min-height: 500px;
 		background: url('/field-image.jpg') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
@@ -173,10 +178,10 @@
 
 	.point {
 		position: absolute;
-		width: 10px;
-		height: 10px;
+		width: 1.5%;
+		height: 1.5%;
 		border-radius: 50%;
-		transform: translate(-50%, -50%);
+		transform: translate(-50%, 50%);
 	}
 
 	.curve {
@@ -267,8 +272,8 @@
 	<div class="container">
 		<div class="field">
 			{#each $paths as path}
-				{#each path.controlPoints as { x, y }, i}
-					<div class="point" style="left: {x / 144 * 100}%; bottom: {(y - 2.5) / 144 * 100}%; background: {path.color};"></div>
+				{#each path.controlPoints as { x, y }}
+					<div class="point" style="left: {x / 144 * 100}%; bottom: {y / 144 * 100}%; background: {path.color};"></div>
 				{/each}
 			{/each}
 			<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
