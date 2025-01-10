@@ -48,15 +48,36 @@
 	}
   
 	function exportControlPoints() {
-		controlPoints.subscribe(points => {
-			const data = JSON.stringify(points, null, 2);
-			const blob = new Blob([data], { type: 'application/json' });
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = 'control_points.json';
-			link.click();
-		});
+		const data = $paths.map(path => ({
+			id: path.id,
+			controlPoints: path.controlPoints,
+			color: path.color
+		}));
+		const json = JSON.stringify(data, null, 2);
+		const blob = new Blob([json], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = 'paths.json';
+		link.click();
+	}
+
+	function importControlPoints() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.json';
+		input.onchange = async (event) => {
+			const file = event.target.files[0];
+			const text = await file.text();
+			const data = JSON.parse(text);
+			paths.set(data.map((path, index) => ({
+				...path,
+				id: index
+			})));
+			data.forEach((path, index) => generateBezierCurve(index));
+			updateRobotPosition();
+		};
+		input.click();
 	}
 
 	function addPath() {
@@ -112,7 +133,13 @@
 	}
 
 	function deletePath(pathId) {
-		paths.update(paths => paths.filter(path => path.id !== pathId));
+		paths.update(paths => {
+			const updatedPaths = paths.filter(path => path.id !== pathId);
+			updatedPaths.forEach((path, index) => {
+				path.id = index;
+			});
+			return updatedPaths;
+		});
 	}
 
 	let scrubValue = 0;
@@ -152,6 +179,8 @@
 	let elapsedTime = 0;
 	let path = null;
 	let pathAnimTime = 0;
+	let linearScrubValue = 0;
+	let motionBlurAmount = 0.02; 
 
 	function playPath() {
 		if (isPlaying) return;
@@ -165,6 +194,8 @@
 			path = $paths[currentPathIndex];
 			pathAnimTime = animTime / $paths.length;
 			progress = elapsedTime / pathAnimTime;
+
+			linearScrubValue = ((currentPathIndex + progress) / $paths.length) * 100;
 
 			if (progress < 0.5) {
 				progress = 2 * progress * progress;
@@ -190,6 +221,14 @@
 		}
 		wasPaused = true;
 		isStartingFromBeginning = false;
+	}
+
+	$: {
+		const robotElement = document.getElementById('robot');
+		if (robotElement) {
+			robotElement.style.transition = isPlaying ? `transform ${animInterval}ms linear` : 'none';
+			robotElement.style.filter = isPlaying ? `blur(${motionBlurAmount * 10}px)` : 'none';
+		}
 	}
 
 
@@ -258,7 +297,7 @@
 	* {
 		font-family: "Nunito", serif;
 		font-optical-sizing: auto;
-		font-weight: 400;
+		font-weight: 600;
 		font-style: normal;
 	}
 
@@ -280,24 +319,25 @@
 		display: flex;
 		justify-content: space-between;
 		width: 100%;
-		min-width: 1150px;
+		min-width: 100%;
+		max-height: 85vh;
 	}
 
 	.container > * {
 		margin: 0.3rem;
 		box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.3);
-		border-radius: 20px;
+		border-radius: 10px;
 		
 	}
 
 	.field {
 		position: relative;
-		width: 85vh;
-		height: 85vh;
-		max-width: 85vh;
-		max-height: 85vh;
-		min-width: 500px;
-		min-height: 500px;
+		width: 80vh;
+		height: 80vh;
+		max-width: 80vh;
+		max-height: 80vh;
+		min-width: 40vh;
+		min-height: 40vh;
 		background: url('/good-field-image.png') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
@@ -352,7 +392,7 @@
 		align-items: flex-start;
 		padding: 1rem;
 		flex-grow: 1;
-		max-height: 85vh;
+		max-height: 80vh;
 		overflow-y: auto;
 	}
 
@@ -383,10 +423,12 @@
 	}
 
 	.path {
-		margin: 0.5rem 0;
-		padding: 0.5rem;
+		margin: 0rem;
 		border-radius: 10px;
 		border: 4px solid;
+		display: flex;
+		flex-direction: column;
+		width: calc(100% - 8px); /* Adjust width to prevent overflow */
 	}
 
 	.path-header {
@@ -396,26 +438,19 @@
 		flex-direction: row;
 		border:none;
 		height: 2rem;
+		margin: 0.5rem;
 	}
 
 	.path-control-points {
 		display: block;
+		margin: 0.5rem;
 	}
 
 	.standard-input-box {
 		width: 125px;
 	}
 
-	/* .path-header > button {
-		background: #B1F0F7;
-		border: none;
-		padding: 0.5rem 1.5rem;
-		margin: 0.3rem;
-		border-radius: 5px;
-		cursor: pointer;
-		font-size: 0.75rem;
-	} */
-
+	
 	.color-circle {
 		-webkit-appearance: none;
 		-moz-appearance: none;
@@ -448,16 +483,64 @@
 		align-items: center;
 	}
 
+	.add-and-remove > svg {
+		cursor: pointer;
+		margin: 0.1rem;
+	}
+
 	.path-and-color > .path-title {
 		font-weight: bold;
 	}
 
 	.control-point-box > label {
 		font-size: 0.75rem;
+		font-weight: 750;
 	}
 
-	.control-point-box > input {
+	.control-point-mini-box {
+		display: flex;
+		align-items: center;
+		flex-direction: row;
+	}
+
+	.control-point-mini-box-x > input {
 		font-size: 0.75rem;
+		font-weight: 750;
+		margin:0rem;
+	}
+	
+	
+	.control-point-mini-box-y > input {
+		font-size: 0.75rem;
+		font-weight: 750;
+		margin:0rem;
+	}
+	
+
+	.control-point-mini-box-x, .control-point-mini-box-y {
+		display: flex;
+		align-items: center;
+		margin: 0.1rem;
+		flex-direction: row;
+	}
+	.control-point-mini-box-x > label {
+		font-size: 0.75rem;
+		font-weight: 750;
+	}
+	
+	.control-point-mini-box-y > label {
+		font-size: 0.75rem;
+		font-weight: 750;
+	}
+
+	.cp-x {
+		margin: 0.3rem;
+		font-weight: 400 !important;
+	}
+
+	.cp-y {
+		margin: 0.3rem;
+		font-weight: 400 !important;
 	}
 
 	.robot-options > label {
@@ -484,7 +567,7 @@
 
 		margin: 0.3rem;
 		box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.3);
-		border-radius: 20px;
+		border-radius: 10px;
 		
 	}
 
@@ -533,6 +616,10 @@
 		align-items: center;
 	}
 
+	.footer {
+		width: 100%;
+	}
+
 
 
 </style>
@@ -540,8 +627,10 @@
 <div>
 	<div class="header">
 		<h1 class="page-title">JPather</h1>
-
-		<button on:click={exportControlPoints}>Export Control Points</button>
+		<div class="export-import">
+			<button on:click={importControlPoints} style="user-select:none;">Import Control Points</button>
+			<button on:click={exportControlPoints} style="user-select:none;">Export Control Points</button>
+		</div>
 	</div>
 
 	<div class="main-content">
@@ -550,13 +639,13 @@
 			<div class="settings-column">
 				<div class="robot-options-menu">
 					<div>
-						<h2 class="section-title">Robot Options</h2>
+						<h2 class="section-title" style="user-select:none;">Robot Options</h2>
 						<div class="robot-options">
-							<label for="robot-length">Robot Length:</label>
+							<label for="robot-length" style="user-select:none;">Robot Length:</label>
 							<input id="robot-length" class="standard-input-box" type="number" step="0.01" bind:value={robotLength} />
 						</div>
 						<div class="robot-options">
-							<label for="robot-width">Robot Width:</label>
+							<label for="robot-width" style="user-select:none;">Robot Width:</label>
 							<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={robotWidth} />
 						</div>
 					</div>
@@ -603,11 +692,11 @@
 							<div class="path-and-color">
 								<svg class="drag-handle" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="black"><path d="M160-360v-80h640v80H160Zm0-160v-80h640v80H160Z"/></svg>
 								<input type="color" class="color-circle" style="background-color: {path.color};" bind:value={path.color} on:input={() => updatePathColor(path.id, path.color)} />
-								<p class="path-title">Path {path.id + 1}</p>
+								<p class="path-title" style="user-select:none;">Path {path.id + 1}</p>
 							</div>
 							<div class="add-and-remove">
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
-								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={() => deletePath(path.id)} style="cursor: pointer;"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
+								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={($paths.length > 1) ? "#FF474D" : "gray"} on:click={() => { if ($paths.length > 1) deletePath(path.id); }} style="cursor: {($paths.length > 1) ? 'pointer' : 'default'};"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#90EE90" on:click={() => addControlPointToPath(path.id)} on:keydown={(e) => { if (e.key === 'Enter') addControlPointToPath(path.id, x, y); }} style="cursor: pointer;"><path d="M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
 							</div>
 							
@@ -615,16 +704,24 @@
 							<div class="path-control-points">
 								{#each path.controlPoints as { x, y }, i}
 									<div class="control-point-box">
-										<label for="control-point-{path.id}-{i}">Control Point {i + 1}:</label>
-										<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
-										<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+										<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i + 1}:</label>
+										<div class="control-point-mini-box">
+											<div class="control-point-mini-box-x">
+												<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
+												<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+											</div>
+											<div class="control-point-mini-box-y">
+												<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
+												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+											</div>
+										</div>	
 									</div>
 								{/each}
 						</div>
 					</div>
 				{/each}
 
-				<button on:click={() => {addPath(); generateBezierCurve($paths.length - 1);}}>Add Path</button>
+				<button on:click={() => {addPath(); generateBezierCurve($paths.length - 1);}} style="user-select:none;">Add Path</button>
 			</div>
 		</div>
 
@@ -639,7 +736,7 @@
 					{/if}
 					
 				</div>
-				<input type="range" id="scrub" min="0" max="100" step="0.001" bind:value={scrubValue} on:input={updateRobotPosition} />
+				<input type="range" id="scrub" min="0" max="100" step="0.001" bind:value={linearScrubValue} on:input={updateRobotPosition} />
 			</div>
 		</div>
 
