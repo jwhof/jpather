@@ -23,3 +23,5 @@
 - [x] add motion blur
 - [ ] add different path colors in scrubbing bar
 - [ ] add margin-bottom between paths
+- [ ] add robot heading along path
+- [ ] add multiple path imports ontop of each other

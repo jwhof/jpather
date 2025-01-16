@@ -1,4 +1,5 @@
 <script>
+  import { linear } from 'svelte/easing';
 	import { writable } from 'svelte/store';
   
 	let controlPoints = writable([]);
@@ -181,13 +182,19 @@
 	let pathAnimTime = 0;
 	let linearScrubValue = 0;
 	let motionBlurAmount = 0.02; 
+	let currentPathIndex = 0;
+	let pathStartTime = 0;
 
 	function playPath() {
 		if (isPlaying) return;
 		isPlaying = true;
 	
-		let currentPathIndex = isStartingFromBeginning ? 0 : Math.floor(scrubValue / 100 * $paths.length);
-		let pathStartTime = Date.now() - (isStartingFromBeginning ? 0 : (scrubValue % (100 / $paths.length)) / 100 * animTime * 1000);
+		currentPathIndex = isStartingFromBeginning ? 0 : Math.floor(scrubValue / 100 * $paths.length);
+		pathStartTime = Date.now() - (isStartingFromBeginning ? 0 : (scrubValue % (100 / $paths.length)) / 100 * animTime * 1000);
+
+		if (wasPaused) {
+			pathStartTime = Date.now() - (progress * pathAnimTime * 1000);
+		}
 
 		intervalId = setInterval(() => {
 			elapsedTime = (Date.now() - pathStartTime) / 1000;
@@ -221,6 +228,21 @@
 		}
 		wasPaused = true;
 		isStartingFromBeginning = false;
+	}
+
+	$: {
+		if (!isPlaying && wasPaused) {
+			const totalPaths = $paths.length;
+			const pathIndex = Math.floor(linearScrubValue / 100 * totalPaths);
+			const pathProgress = (linearScrubValue / 100 * totalPaths) - pathIndex;
+			const adjustedProgress = pathProgress < 0.5 ? 2 * pathProgress * pathProgress : -1 + (4 - 2 * pathProgress) * pathProgress;
+			scrubValue = ((pathIndex + adjustedProgress) / totalPaths) * 100;
+			currentPathIndex = pathIndex;
+			progress = adjustedProgress;
+
+
+			updateRobotPosition();
+		}
 	}
 
 	$: {
