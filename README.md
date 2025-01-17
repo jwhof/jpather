@@ -2,26 +2,27 @@
 
 ## TODO:
 - [x] add greyed out trash can so user cant delete only path
-- [ ] fix bugged z-index of robot over curve
-- [ ] ES_ add path organization dragging functionality
+- [x] fix bugged z-index of robot over curve
+- [x] ES_ add path organization up/down functionality
 - [x] less border radii so its less kid friendly
 - [x] increase space b/t trash and add buttons
 - [x] fix scrub bar 0% and 100%'s are offset
 - [x] add playback button
 - [x] fix non-linear time scrub bar
-- [ ] ES_ add scrubbing while playing
-- [ ] add user-facing option for infinite looping
+- [ ] add scrubbing while playing
+- [x] add user-facing option for infinite looping
 - [x] fix path deletion indexing problem
-- [ ] ES_ add autoLink paths together
-- [ ] add delete autoLink
+- [x] ES_ add autoLink paths together
+- [x] add delete autoLink
 - [x] add labels for X and Y on the control point menu + bold the numbers?
-- [ ] add units for robot length and width
+- [x] add units for robot length and width
 - [ ] add dark mode
-- [ ] ES_add control point deletion option
+- [x] ES_add control point deletion option
 - [ ] replace robot image
 - [ ] ES_ add robot bounding box --> points are unable to be dragged outside
 - [x] add motion blur
 - [ ] ES_ add different path colors in scrubbing bar
 - [x] add margin-bottom between paths
 - [ ] ES_ add robot heading along path
-- [ ] add multiple path imports ontop of each other
+- [ ] ES_ add multiple path imports ontop of each other
+- [ ] ES_ add robot hitboxes

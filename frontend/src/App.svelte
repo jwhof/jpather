@@ -8,8 +8,19 @@
 	let x = 0;
 	let y = 0;
 
+	let displayLength = 18;
+	let displayWidth = 18;
+
 	let robotLength = 18;
 	let robotWidth = 18;
+
+	let robotUnits = 'inches';
+
+	$: {
+		const conversionFactor = robotUnits === 'inches' ? 1 : 2.54;
+		robotLength = displayLength / conversionFactor;
+		robotWidth = displayWidth / conversionFactor;
+	}
 
 	function getRandomBrightColor() {
 		const r = Math.floor(Math.random() * 128 + 128);
@@ -175,7 +186,7 @@
 	let isStartingFromBeginning = true;
 	$: animTime = 1.56 * $paths.length;
 	let intervalId = null;
-	let animInterval = 3;
+	let animInterval = 1;
 	let progress = 0;
 	let elapsedTime = 0;
 	let path = null;
@@ -184,6 +195,7 @@
 	let motionBlurAmount = 0.02; 
 	let currentPathIndex = 0;
 	let pathStartTime = 0;
+	let shouldRepeatPath = true;
 
 	function playPath() {
 		if (isPlaying) return;
@@ -214,7 +226,15 @@
 			updateRobotPosition();
 
 			if (elapsedTime >= pathAnimTime) {
-				currentPathIndex = (currentPathIndex + 1) % $paths.length;
+				if (currentPathIndex + 1 >= $paths.length) {
+					if (shouldRepeatPath) {
+						currentPathIndex = 0;
+					} else {
+						pausePath();
+					}
+				} else {
+					currentPathIndex++;
+				}
 				pathStartTime = Date.now();
 			}
 		}, animInterval);
@@ -351,6 +371,8 @@
 
 
 
+
+
 </script>
   
 <style>
@@ -424,6 +446,8 @@
 		position: absolute;
 		z-index: 3;
 	}
+
+	
 
 	.robot-options-menu {
 		display: flex;
@@ -608,12 +632,6 @@
 		font-size: 0.75rem;
 	}
 
-	#robot {
-		position: absolute;
-		transform: translate(-50%, 50%);
-		z-index: 1;
-	}
-
 	.scrubbing-bar {
 		display: flex;
 		align-items: center;
@@ -676,6 +694,58 @@
 		width: 100%;
 	}
 
+	.section-title {
+		margin-bottom: 0.5rem;
+		margin-top: 0.5rem;
+	}
+
+	.advanced-options {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin: 0.5rem;
+	}
+
+	.advanced-options > label {
+		font-size:0.75rem;
+		margin: 0.2rem;
+	}
+
+	.advanced-options > input {
+		font-size: 0.75rem;
+		margin: 0rem;
+	}
+
+	#field-options {
+		margin-top: 1rem;
+	}
+
+	#advanced-options {
+		margin-top: 1rem;
+	}
+
+	#robot {
+		position: absolute;
+		transform: translate(-50%, 50%);
+		z-index: 0;
+	}
+
+	img {
+		position: absolute;
+		transform: translate(-50%, 50%);
+		z-index: 0;
+	}
+
+	polyline {
+		position: absolute;
+		z-index: 1;
+	}
+
+	#robotUnits {
+		font-size: 0.75rem;
+	}
+
+
 
 
 </style>
@@ -696,24 +766,60 @@
 				<div class="robot-options-menu">
 					<div>
 						<h2 class="section-title" style="user-select:none;">Robot Options</h2>
+
+						<div class="robot-options">
+							<label for="robotUnits" style="user-select:none;">Units:</label>
+							<select id="robotUnits" class="standard-input-box" bind:value={robotUnits}>
+								<option value="inches">Inches</option>
+								<option value="cm">Centimeters</option>
+							</select>
+						</div>
+
 						<div class="robot-options">
 							<label for="robot-length" style="user-select:none;">Robot Length:</label>
-							<input id="robot-length" class="standard-input-box" type="number" step="0.01" bind:value={robotLength} />
+							<input id="robot-length" class="standard-input-box" type="number" step="0.01" bind:value={displayLength} />
 						</div>
+
 						<div class="robot-options">
 							<label for="robot-width" style="user-select:none;">Robot Width:</label>
-							<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={robotWidth} />
+							<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={displayWidth} />
 						</div>
-						<h2 class="section-title" style="user-select:none;">Field Options</h2>
-						<div class="robot-options">
+						
+
+
+						<h2 id="field-options" class="section-title" style="user-select:none;">Field Options</h2>
+
+						<!-- svelte-ignore a11y-label-has-associated-control -->
+						<label style="user-select:none;">Starting Position:</label>
+
+						
+						<div class="control-point-mini-box">
+							<div class="control-point-mini-box-x">
+								<!-- svelte-ignore a11y-label-has-associated-control -->
+								<label class="cp-x" style="user-select:none;">X:</label>
+								{#if $paths.length > 0}
+								<input class="standard-input-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].x} on:input={() => updateRobotPosition()}/>
+								{/if}
+							</div>
+							<div class="control-point-mini-box-y">
+								<!-- svelte-ignore a11y-label-has-associated-control -->
+								<label class="cp-x" style="user-select:none;">Y:</label>
+								{#if $paths.length > 0}
+								<input class="standard-input-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].y} on:input={() => updateRobotPosition()}/>
+								{/if}
+							</div>
+						</div>	
+
+						<h2 id="advanced-options" class="section-title" style="user-select:none;">Advanced Options</h2>
+						<div class="advanced-options">
+							<label for="field-length" style="user-select:none;">Infinite Path Looping: </label>
+							<input id="auto-link-paths" type="checkbox" bind:checked={shouldRepeatPath} />
+						</div>
+						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Auto-link Paths:</label>
 							<input id="auto-link-paths" type="checkbox" bind:checked={autoLinkPaths} />
 						</div>
 					</div>
-				</div>
-
-				<div class="field-settings">
-					
 				</div>
 			</div>
 
@@ -725,23 +831,22 @@
 					</div>
 					{/each}
 				{/each}
+
 				
-				<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
-					{#each $paths as path}
-						<polyline
-							class="curve"
-							points="{path.bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
-							style="stroke: {path.color};"
-						/>
-					{/each}
-				</svg>
-
-
-
 				{#if $paths.length > 0}
-					<img src="/drivetrain.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
+					<img src="/robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
 				{/if}
 
+			
+					<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
+						{#each $paths as path}
+							<polyline
+								class="curve"
+								points="{path.bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
+								style="stroke: {path.color};"
+							/>
+						{/each}
+					</svg>
 
 
 			</div>
@@ -768,17 +873,28 @@
 							<div class="path-control-points">
 								{#each path.controlPoints as { x, y }, i}
 									<div class="control-point-box">
-										<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i + 1}:</label>
-										<div class="control-point-mini-box">
-											<div class="control-point-mini-box-x">
-												<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
-												<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+										{#if (path.controlPoints.length >= 2) && (i > 0) && (i < 2)}
+											<label for="control-point-{path.id}-{i}" style="user-select:none;">Endpoint:</label>
+										{:else if (i > 0)}
+											<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i-1}:</label>
+										{/if}
+										{#if i > 0 || path.controlPoints.length === 1}
+											<div class="control-point-mini-box">
+												<div class="control-point-mini-box-x">
+													<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
+													<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+												</div>
+												<div class="control-point-mini-box-y">
+													<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
+													<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+												</div>
+												<!-- svelte-ignore a11y-click-events-have-key-events -->
+
+											{#if (i > 1)}
+											<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={() => { if (path.controlPoints.length > 2) { path.controlPoints.splice(i, 1); generateBezierCurve(path.id); paths.set($paths); } }} style="cursor: pointer;"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
+											{/if}
 											</div>
-											<div class="control-point-mini-box-y">
-												<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
-												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
-											</div>
-										</div>	
+										{/if}
 									</div>
 								{/each}
 						</div>
