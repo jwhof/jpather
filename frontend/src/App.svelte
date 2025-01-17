@@ -310,6 +310,69 @@
 		}
 	});
 
+	let autoLinkPaths = true;
+
+	$: {
+		if (autoLinkPaths) {
+			$paths.forEach((path, index) => {
+				if (index > 0) {
+					const lastPath = $paths[index - 1];
+					const lastControlPoint = lastPath.controlPoints[lastPath.controlPoints.length - 1];
+					const firstControlPoint = path.controlPoints[0];
+					if (lastControlPoint && firstControlPoint) {
+						firstControlPoint.x = lastControlPoint.x;
+						firstControlPoint.y = lastControlPoint.y;
+						path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
+					}
+				}
+			});
+		}
+	}
+
+	function updateConnectedPoints(event) {
+		const rect = field.getBoundingClientRect();
+		const newMouseX = event.clientX - rect.left;
+		const newMouseY = event.clientY - rect.top;
+		const newX = newMouseX / rect.width * 144;
+		const newY = 144 - (newMouseY / rect.height * 144);
+
+		paths.update(paths => {
+			const path = paths.find(p => p.id === selectedPathId);
+			if (path) {
+				const point = path.controlPoints[selectedPointIndex];
+				if (point) {
+					point.x = newX;
+					point.y = newY;
+					if (selectedPointIndex === 0 && selectedPathId > 0) {
+						const prevPath = paths[selectedPathId - 1];
+						const prevPoint = prevPath.controlPoints[prevPath.controlPoints.length - 1];
+						prevPoint.x = newX;
+						prevPoint.y = newY;
+						prevPath.bezierCurvePoints = calculateBezier(prevPath.controlPoints, 100);
+					} else if (selectedPointIndex === path.controlPoints.length - 1 && selectedPathId < paths.length - 1) {
+						const nextPath = paths[selectedPathId + 1];
+						const nextPoint = nextPath.controlPoints[0];
+						nextPoint.x = newX;
+						nextPoint.y = newY;
+						nextPath.bezierCurvePoints = calculateBezier(nextPath.controlPoints, 100);
+					}
+					path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
+				}
+			}
+			return paths;
+		});
+
+		updateRobotPosition();
+	}
+
+	document.addEventListener('mousemove', updateConnectedPoints);
+	document.addEventListener('mouseup', () => {
+		document.removeEventListener('mousemove', updateConnectedPoints);
+	});
+
+
+
+	
 
 
 
@@ -671,6 +734,11 @@
 							<label for="robot-width" style="user-select:none;">Robot Width:</label>
 							<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={robotWidth} />
 						</div>
+						<h2 class="section-title" style="user-select:none;">Field Options</h2>
+						<div class="robot-options">
+							<label for="field-length" style="user-select:none;">Auto-link Paths:</label>
+							<input id="auto-link-paths" type="checkbox" bind:checked={autoLinkPaths} />
+						</div>
 					</div>
 				</div>
 
@@ -713,7 +781,10 @@
 					<div class="path" style="border-color: {path.color};">
 						<div class="path-header">
 							<div class="path-and-color">
-								<svg class="drag-handle" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="black"><path d="M160-360v-80h640v80H160Zm0-160v-80h640v80H160Z"/></svg>
+								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={(path.id < $paths.length - 1) ? "black" : "gray"} style="cursor: {(path.id < $paths.length - 1) ? 'pointer' : 'default'}" on:click={() => { if (path.id < $paths.length - 1) { const temp = $paths[path.id + 1]; $paths[path.id + 1] = { ...$paths[path.id], id: path.id + 1 }; $paths[path.id] = { ...temp, id: path.id }; paths.set($paths);}}}><path d="M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z"/></svg>
+								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={(path.id > 0) ? "black" : "gray"} style="cursor: {(path.id > 0) ? 'pointer' : 'default'}" on:click={() => { if (path.id > 0) { const temp = $paths[path.id - 1]; $paths[path.id - 1] = { ...$paths[path.id], id: path.id - 1 }; $paths[path.id] = { ...temp, id: path.id }; paths.set($paths); }}}><path d="M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z"/></svg>
 								<input type="color" class="color-circle" style="background-color: {path.color};" bind:value={path.color} on:input={() => updatePathColor(path.id, path.color)} />
 								<p class="path-title" style="user-select:none;">Path {path.id + 1}</p>
 							</div>
