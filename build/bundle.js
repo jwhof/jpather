@@ -562,10 +562,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "0.01");
-    			add_location(input, file, 800, 8, 18712);
+    			add_location(input, file, 800, 8, 18711);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
@@ -612,10 +612,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "0.01");
-    			add_location(input, file, 807, 8, 19106);
+    			add_location(input, file, 807, 8, 19105);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
@@ -662,13 +662,13 @@ var app = (function () {
     		c: function create() {
     			div1 = element("div");
     			div0 = element("div");
-    			attr_dev(div0, "class", "point svelte-v7wju");
+    			attr_dev(div0, "class", "point svelte-vq7zdm");
     			set_style(div0, "left", /*x*/ ctx[12] / 144 * 100 + "%");
     			set_style(div0, "bottom", /*y*/ ctx[13] / 144 * 100 + "%");
     			set_style(div0, "background", /*path*/ ctx[14].color);
-    			add_location(div0, file, 829, 6, 20025);
-    			attr_dev(div1, "class", "hover-point svelte-v7wju");
-    			add_location(div1, file, 828, 5, 19992);
+    			add_location(div0, file, 829, 6, 20024);
+    			attr_dev(div1, "class", "hover-point svelte-vq7zdm");
+    			add_location(div1, file, 828, 5, 19991);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div1, anchor);
@@ -789,8 +789,8 @@ var app = (function () {
     			set_style(img, "left", /*robotX*/ ctx[8] / 144 * 100 + "%");
     			set_style(img, "bottom", /*robotY*/ ctx[9] / 144 * 100 + "%");
     			set_style(img, "user-select", "none");
-    			attr_dev(img, "class", "svelte-v7wju");
-    			add_location(img, file, 836, 5, 20218);
+    			attr_dev(img, "class", "svelte-vq7zdm");
+    			add_location(img, file, 836, 5, 20217);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, img, anchor);
@@ -836,10 +836,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			polyline = svg_element("polyline");
-    			attr_dev(polyline, "class", "curve svelte-v7wju");
+    			attr_dev(polyline, "class", "curve svelte-vq7zdm");
     			attr_dev(polyline, "points", polyline_points_value = /*path*/ ctx[14].bezierCurvePoints.map(func).join(' '));
     			set_style(polyline, "stroke", /*path*/ ctx[14].color);
-    			add_location(polyline, file, 842, 7, 20590);
+    			add_location(polyline, file, 842, 7, 20589);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, polyline, anchor);
@@ -886,8 +886,8 @@ var app = (function () {
     			t2 = text(":");
     			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-v7wju");
-    			add_location(label, file, 882, 11, 24476);
+    			attr_dev(label, "class", "svelte-vq7zdm");
+    			add_location(label, file, 882, 11, 24475);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -928,8 +928,8 @@ var app = (function () {
     			t = text("Test Endpoint:");
     			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-v7wju");
-    			add_location(label, file, 880, 11, 24344);
+    			attr_dev(label, "class", "svelte-vq7zdm");
+    			add_location(label, file, 880, 11, 24343);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -1012,30 +1012,30 @@ var app = (function () {
     			input1 = element("input");
     			t5 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-v7wju");
+    			attr_dev(label0, "class", "cp-x svelte-vq7zdm");
     			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 887, 13, 24762);
+    			add_location(label0, file, 887, 13, 24761);
     			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66]);
-    			attr_dev(input0, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input0, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 888, 13, 24867);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-v7wju");
-    			add_location(div0, file, 886, 12, 24709);
-    			attr_dev(label1, "class", "cp-y svelte-v7wju");
+    			add_location(input0, file, 888, 13, 24866);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-vq7zdm");
+    			add_location(div0, file, 886, 12, 24708);
+    			attr_dev(label1, "class", "cp-y svelte-vq7zdm");
     			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 891, 13, 25132);
+    			add_location(label1, file, 891, 13, 25131);
     			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[14].id + "-" + /*i*/ ctx[66] + "-y");
-    			attr_dev(input1, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input1, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 892, 13, 25239);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-v7wju");
-    			add_location(div1, file, 890, 12, 25079);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-v7wju");
-    			add_location(div2, file, 885, 11, 24659);
+    			add_location(input1, file, 892, 13, 25238);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-vq7zdm");
+    			add_location(div1, file, 890, 12, 25078);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-vq7zdm");
+    			add_location(div2, file, 885, 11, 24658);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1130,16 +1130,16 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path_1, "class", "svelte-v7wju");
-    			add_location(path_1, file, 898, 285, 25895);
+    			attr_dev(path_1, "class", "svelte-vq7zdm");
+    			add_location(path_1, file, 898, 285, 25894);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
     			set_style(svg, "cursor", "pointer");
-    			attr_dev(svg, "class", "svelte-v7wju");
-    			add_location(svg, file, 898, 11, 25621);
+    			attr_dev(svg, "class", "svelte-vq7zdm");
+    			add_location(svg, file, 898, 11, 25620);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -1191,8 +1191,8 @@ var app = (function () {
     			if (if_block0) if_block0.c();
     			t = space();
     			if (if_block1) if_block1.c();
-    			attr_dev(div, "class", "control-point-box svelte-v7wju");
-    			add_location(div, file, 878, 9, 24228);
+    			attr_dev(div, "class", "control-point-box svelte-vq7zdm");
+    			add_location(div, file, 878, 9, 24227);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -1347,8 +1347,8 @@ var app = (function () {
     			}
 
     			attr_dev(path0, "d", "M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z");
-    			attr_dev(path0, "class", "svelte-v7wju");
-    			add_location(path0, file, 860, 534, 21672);
+    			attr_dev(path0, "class", "svelte-vq7zdm");
+    			add_location(path0, file, 860, 534, 21671);
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
@@ -1362,11 +1362,11 @@ var app = (function () {
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg0, "class", "svelte-v7wju");
-    			add_location(svg0, file, 860, 8, 21146);
+    			attr_dev(svg0, "class", "svelte-vq7zdm");
+    			add_location(svg0, file, 860, 8, 21145);
     			attr_dev(path1, "d", "M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z");
-    			attr_dev(path1, "class", "svelte-v7wju");
-    			add_location(path1, file, 863, 482, 22373);
+    			attr_dev(path1, "class", "svelte-vq7zdm");
+    			add_location(path1, file, 863, 482, 22372);
     			attr_dev(svg1, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg1, "height", "24px");
     			attr_dev(svg1, "viewBox", "0 -960 960 960");
@@ -1380,48 +1380,48 @@ var app = (function () {
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg1, "class", "svelte-v7wju");
-    			add_location(svg1, file, 863, 8, 21899);
+    			attr_dev(svg1, "class", "svelte-vq7zdm");
+    			add_location(svg1, file, 863, 8, 21898);
     			attr_dev(input, "type", "color");
-    			attr_dev(input, "class", "color-circle svelte-v7wju");
+    			attr_dev(input, "class", "color-circle svelte-vq7zdm");
     			set_style(input, "background-color", /*path*/ ctx[14].color);
-    			add_location(input, file, 864, 8, 22468);
-    			attr_dev(p, "class", "path-title svelte-v7wju");
+    			add_location(input, file, 864, 8, 22467);
+    			attr_dev(p, "class", "path-title svelte-vq7zdm");
     			set_style(p, "user-select", "none");
-    			add_location(p, file, 865, 8, 22639);
-    			attr_dev(div0, "class", "path-and-color svelte-v7wju");
-    			add_location(div0, file, 857, 7, 20974);
+    			add_location(p, file, 865, 8, 22638);
+    			attr_dev(div0, "class", "path-and-color svelte-vq7zdm");
+    			add_location(div0, file, 857, 7, 20973);
     			attr_dev(path2, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path2, "class", "svelte-v7wju");
-    			add_location(path2, file, 871, 276, 23239);
+    			attr_dev(path2, "class", "svelte-vq7zdm");
+    			add_location(path2, file, 871, 276, 23238);
     			attr_dev(svg2, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg2, "height", "24px");
     			attr_dev(svg2, "viewBox", "0 -960 960 960");
     			attr_dev(svg2, "width", "24px");
     			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[5].length > 1 ? "#FF474D" : "gray");
     			set_style(svg2, "cursor", /*$paths*/ ctx[5].length > 1 ? 'pointer' : 'default');
-    			attr_dev(svg2, "class", "svelte-v7wju");
-    			add_location(svg2, file, 871, 8, 22971);
+    			attr_dev(svg2, "class", "svelte-vq7zdm");
+    			add_location(svg2, file, 871, 8, 22970);
     			attr_dev(path3, "d", "M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z");
-    			attr_dev(path3, "class", "svelte-v7wju");
-    			add_location(path3, file, 872, 273, 23726);
+    			attr_dev(path3, "class", "svelte-vq7zdm");
+    			add_location(path3, file, 872, 273, 23725);
     			attr_dev(svg3, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg3, "height", "24px");
     			attr_dev(svg3, "viewBox", "0 -960 960 960");
     			attr_dev(svg3, "width", "24px");
     			attr_dev(svg3, "fill", "#90EE90");
     			set_style(svg3, "cursor", "pointer");
-    			attr_dev(svg3, "class", "svelte-v7wju");
-    			add_location(svg3, file, 872, 8, 23461);
-    			attr_dev(div1, "class", "add-and-remove svelte-v7wju");
-    			add_location(div1, file, 869, 7, 22867);
-    			attr_dev(div2, "class", "path-header svelte-v7wju");
-    			add_location(div2, file, 856, 6, 20940);
-    			attr_dev(div3, "class", "path-control-points svelte-v7wju");
-    			add_location(div3, file, 876, 7, 24133);
-    			attr_dev(div4, "class", "path svelte-v7wju");
+    			attr_dev(svg3, "class", "svelte-vq7zdm");
+    			add_location(svg3, file, 872, 8, 23460);
+    			attr_dev(div1, "class", "add-and-remove svelte-vq7zdm");
+    			add_location(div1, file, 869, 7, 22866);
+    			attr_dev(div2, "class", "path-header svelte-vq7zdm");
+    			add_location(div2, file, 856, 6, 20939);
+    			attr_dev(div3, "class", "path-control-points svelte-vq7zdm");
+    			add_location(div3, file, 876, 7, 24132);
+    			attr_dev(div4, "class", "path svelte-vq7zdm");
     			set_style(div4, "border-color", /*path*/ ctx[14].color);
-    			add_location(div4, file, 855, 5, 20878);
+    			add_location(div4, file, 855, 5, 20877);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div4, anchor);
@@ -1573,15 +1573,15 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z");
-    			attr_dev(path_1, "class", "svelte-v7wju");
-    			add_location(path_1, file, 921, 134, 27061);
+    			attr_dev(path_1, "class", "svelte-vq7zdm");
+    			add_location(path_1, file, 921, 134, 27060);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
-    			attr_dev(svg, "class", "svelte-v7wju");
-    			add_location(svg, file, 921, 6, 26933);
+    			attr_dev(svg, "class", "svelte-vq7zdm");
+    			add_location(svg, file, 921, 6, 26932);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -1623,15 +1623,15 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z");
-    			attr_dev(path_1, "class", "svelte-v7wju");
-    			add_location(path_1, file, 919, 134, 26828);
+    			attr_dev(path_1, "class", "svelte-vq7zdm");
+    			add_location(path_1, file, 919, 134, 26827);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#90EE90");
-    			attr_dev(svg, "class", "svelte-v7wju");
-    			add_location(svg, file, 919, 7, 26701);
+    			attr_dev(svg, "class", "svelte-vq7zdm");
+    			add_location(svg, file, 919, 7, 26700);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -1881,144 +1881,144 @@ var app = (function () {
     			if_block3.c();
     			t43 = space();
     			input4 = element("input");
-    			attr_dev(h1, "class", "page-title svelte-v7wju");
-    			add_location(h1, file, 754, 2, 16869);
+    			attr_dev(h1, "class", "page-title svelte-vq7zdm");
+    			add_location(h1, file, 754, 2, 16868);
     			set_style(button0, "user-select", "none");
-    			attr_dev(button0, "class", "svelte-v7wju");
-    			add_location(button0, file, 756, 3, 16940);
+    			attr_dev(button0, "class", "svelte-vq7zdm");
+    			add_location(button0, file, 756, 3, 16939);
     			set_style(button1, "user-select", "none");
-    			attr_dev(button1, "class", "svelte-v7wju");
-    			add_location(button1, file, 757, 3, 17040);
-    			attr_dev(div0, "class", "export-import svelte-v7wju");
-    			add_location(div0, file, 755, 2, 16908);
-    			attr_dev(div1, "class", "header svelte-v7wju");
-    			add_location(div1, file, 753, 1, 16845);
-    			attr_dev(h20, "class", "section-title svelte-v7wju");
+    			attr_dev(button1, "class", "svelte-vq7zdm");
+    			add_location(button1, file, 757, 3, 17039);
+    			attr_dev(div0, "class", "export-import svelte-vq7zdm");
+    			add_location(div0, file, 755, 2, 16907);
+    			attr_dev(div1, "class", "header svelte-vq7zdm");
+    			add_location(div1, file, 753, 1, 16844);
+    			attr_dev(h20, "class", "section-title svelte-vq7zdm");
     			set_style(h20, "user-select", "none");
-    			add_location(h20, file, 767, 6, 17307);
+    			add_location(h20, file, 767, 6, 17306);
     			attr_dev(label0, "for", "robotUnits");
     			set_style(label0, "user-select", "none");
-    			attr_dev(label0, "class", "svelte-v7wju");
-    			add_location(label0, file, 770, 7, 17423);
+    			attr_dev(label0, "class", "svelte-vq7zdm");
+    			add_location(label0, file, 770, 7, 17422);
     			option0.__value = "inches";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-v7wju");
-    			add_location(option0, file, 772, 8, 17581);
+    			attr_dev(option0, "class", "svelte-vq7zdm");
+    			add_location(option0, file, 772, 8, 17580);
     			option1.__value = "cm";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-v7wju");
-    			add_location(option1, file, 773, 8, 17629);
+    			attr_dev(option1, "class", "svelte-vq7zdm");
+    			add_location(option1, file, 773, 8, 17628);
     			attr_dev(select, "id", "robotUnits");
-    			attr_dev(select, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(select, "class", "standard-input-box svelte-vq7zdm");
     			if (/*robotUnits*/ ctx[2] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[28].call(select));
-    			add_location(select, file, 771, 7, 17496);
-    			attr_dev(div2, "class", "robot-options svelte-v7wju");
-    			add_location(div2, file, 769, 6, 17387);
+    			add_location(select, file, 771, 7, 17495);
+    			attr_dev(div2, "class", "robot-options svelte-vq7zdm");
+    			add_location(div2, file, 769, 6, 17386);
     			attr_dev(label1, "for", "robot-length");
     			set_style(label1, "user-select", "none");
-    			attr_dev(label1, "class", "svelte-v7wju");
-    			add_location(label1, file, 778, 7, 17746);
+    			attr_dev(label1, "class", "svelte-vq7zdm");
+    			add_location(label1, file, 778, 7, 17745);
     			attr_dev(input0, "id", "robot-length");
-    			attr_dev(input0, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input0, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 779, 7, 17828);
-    			attr_dev(div3, "class", "robot-options svelte-v7wju");
-    			add_location(div3, file, 777, 6, 17710);
+    			add_location(input0, file, 779, 7, 17827);
+    			attr_dev(div3, "class", "robot-options svelte-vq7zdm");
+    			add_location(div3, file, 777, 6, 17709);
     			attr_dev(label2, "for", "robot-width");
     			set_style(label2, "user-select", "none");
-    			attr_dev(label2, "class", "svelte-v7wju");
-    			add_location(label2, file, 783, 7, 17995);
+    			attr_dev(label2, "class", "svelte-vq7zdm");
+    			add_location(label2, file, 783, 7, 17994);
     			attr_dev(input1, "id", "robot-width");
-    			attr_dev(input1, "class", "standard-input-box svelte-v7wju");
+    			attr_dev(input1, "class", "standard-input-box svelte-vq7zdm");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 784, 7, 18075);
-    			attr_dev(div4, "class", "robot-options svelte-v7wju");
-    			add_location(div4, file, 782, 6, 17959);
+    			add_location(input1, file, 784, 7, 18074);
+    			attr_dev(div4, "class", "robot-options svelte-vq7zdm");
+    			add_location(div4, file, 782, 6, 17958);
     			attr_dev(h21, "id", "field-options");
-    			attr_dev(h21, "class", "section-title svelte-v7wju");
+    			attr_dev(h21, "class", "section-title svelte-vq7zdm");
     			set_style(h21, "user-select", "none");
-    			add_location(h21, file, 789, 6, 18214);
+    			add_location(h21, file, 789, 6, 18213);
     			set_style(label3, "user-select", "none");
-    			attr_dev(label3, "class", "svelte-v7wju");
-    			add_location(label3, file, 792, 6, 18377);
-    			attr_dev(label4, "class", "cp-x svelte-v7wju");
+    			attr_dev(label3, "class", "svelte-vq7zdm");
+    			add_location(label3, file, 792, 6, 18376);
+    			attr_dev(label4, "class", "cp-x svelte-vq7zdm");
     			set_style(label4, "user-select", "none");
-    			add_location(label4, file, 798, 8, 18613);
-    			attr_dev(div5, "class", "control-point-mini-box-x svelte-v7wju");
-    			add_location(div5, file, 796, 7, 18499);
-    			attr_dev(label5, "class", "cp-x svelte-v7wju");
+    			add_location(label4, file, 798, 8, 18612);
+    			attr_dev(div5, "class", "control-point-mini-box-x svelte-vq7zdm");
+    			add_location(div5, file, 796, 7, 18498);
+    			attr_dev(label5, "class", "cp-x svelte-vq7zdm");
     			set_style(label5, "user-select", "none");
-    			add_location(label5, file, 805, 8, 19007);
-    			attr_dev(div6, "class", "control-point-mini-box-y svelte-v7wju");
-    			add_location(div6, file, 803, 7, 18893);
-    			attr_dev(div7, "class", "control-point-mini-box svelte-v7wju");
-    			add_location(div7, file, 795, 6, 18454);
+    			add_location(label5, file, 805, 8, 19006);
+    			attr_dev(div6, "class", "control-point-mini-box-y svelte-vq7zdm");
+    			add_location(div6, file, 803, 7, 18892);
+    			attr_dev(div7, "class", "control-point-mini-box svelte-vq7zdm");
+    			add_location(div7, file, 795, 6, 18453);
     			attr_dev(h22, "id", "advanced-options");
-    			attr_dev(h22, "class", "section-title svelte-v7wju");
+    			attr_dev(h22, "class", "section-title svelte-vq7zdm");
     			set_style(h22, "user-select", "none");
-    			add_location(h22, file, 812, 6, 19303);
+    			add_location(h22, file, 812, 6, 19302);
     			attr_dev(label6, "for", "field-length");
     			set_style(label6, "user-select", "none");
-    			attr_dev(label6, "class", "svelte-v7wju");
-    			add_location(label6, file, 814, 7, 19445);
+    			attr_dev(label6, "class", "svelte-vq7zdm");
+    			add_location(label6, file, 814, 7, 19444);
     			attr_dev(input2, "id", "auto-link-paths");
     			attr_dev(input2, "type", "checkbox");
-    			attr_dev(input2, "class", "svelte-v7wju");
-    			add_location(input2, file, 815, 7, 19537);
-    			attr_dev(div8, "class", "advanced-options svelte-v7wju");
-    			add_location(div8, file, 813, 6, 19406);
+    			attr_dev(input2, "class", "svelte-vq7zdm");
+    			add_location(input2, file, 815, 7, 19536);
+    			attr_dev(div8, "class", "advanced-options svelte-vq7zdm");
+    			add_location(div8, file, 813, 6, 19405);
     			attr_dev(label7, "for", "field-length");
     			set_style(label7, "user-select", "none");
-    			attr_dev(label7, "class", "svelte-v7wju");
-    			add_location(label7, file, 818, 7, 19676);
+    			attr_dev(label7, "class", "svelte-vq7zdm");
+    			add_location(label7, file, 818, 7, 19675);
     			attr_dev(input3, "id", "auto-link-paths");
     			attr_dev(input3, "type", "checkbox");
-    			attr_dev(input3, "class", "svelte-v7wju");
-    			add_location(input3, file, 819, 7, 19761);
-    			attr_dev(div9, "class", "advanced-options svelte-v7wju");
-    			add_location(div9, file, 817, 6, 19637);
-    			attr_dev(div10, "class", "svelte-v7wju");
-    			add_location(div10, file, 766, 5, 17294);
-    			attr_dev(div11, "class", "robot-options-menu svelte-v7wju");
-    			add_location(div11, file, 765, 4, 17255);
-    			attr_dev(div12, "class", "settings-column svelte-v7wju");
-    			add_location(div12, file, 764, 3, 17220);
+    			attr_dev(input3, "class", "svelte-vq7zdm");
+    			add_location(input3, file, 819, 7, 19760);
+    			attr_dev(div9, "class", "advanced-options svelte-vq7zdm");
+    			add_location(div9, file, 817, 6, 19636);
+    			attr_dev(div10, "class", "svelte-vq7zdm");
+    			add_location(div10, file, 766, 5, 17293);
+    			attr_dev(div11, "class", "robot-options-menu svelte-vq7zdm");
+    			add_location(div11, file, 765, 4, 17254);
+    			attr_dev(div12, "class", "settings-column svelte-vq7zdm");
+    			add_location(div12, file, 764, 3, 17219);
     			attr_dev(svg, "viewBox", "0 0 144 144");
     			attr_dev(svg, "width", "100%");
     			attr_dev(svg, "height", "100%");
     			set_style(svg, "position", "absolute");
     			set_style(svg, "top", "0");
     			set_style(svg, "left", "0");
-    			attr_dev(svg, "class", "svelte-v7wju");
-    			add_location(svg, file, 840, 5, 20452);
-    			attr_dev(div13, "class", "field svelte-v7wju");
-    			add_location(div13, file, 825, 3, 19893);
+    			attr_dev(svg, "class", "svelte-vq7zdm");
+    			add_location(svg, file, 840, 5, 20451);
+    			attr_dev(div13, "class", "field svelte-vq7zdm");
+    			add_location(div13, file, 825, 3, 19892);
     			set_style(button2, "user-select", "none");
-    			attr_dev(button2, "class", "svelte-v7wju");
-    			add_location(button2, file, 908, 4, 26243);
-    			attr_dev(div14, "class", "paths svelte-v7wju");
-    			add_location(div14, file, 853, 3, 20824);
-    			attr_dev(div15, "class", "container svelte-v7wju");
-    			add_location(div15, file, 763, 2, 17192);
-    			attr_dev(div16, "class", "play-button svelte-v7wju");
-    			add_location(div16, file, 914, 4, 26449);
+    			attr_dev(button2, "class", "svelte-vq7zdm");
+    			add_location(button2, file, 908, 4, 26242);
+    			attr_dev(div14, "class", "paths svelte-vq7zdm");
+    			add_location(div14, file, 853, 3, 20823);
+    			attr_dev(div15, "class", "container svelte-vq7zdm");
+    			add_location(div15, file, 763, 2, 17191);
+    			attr_dev(div16, "class", "play-button svelte-vq7zdm");
+    			add_location(div16, file, 914, 4, 26448);
     			attr_dev(input4, "type", "range");
     			attr_dev(input4, "id", "scrub");
     			attr_dev(input4, "min", "0");
     			attr_dev(input4, "max", "100");
     			attr_dev(input4, "step", "0.001");
-    			attr_dev(input4, "class", "svelte-v7wju");
-    			add_location(input4, file, 925, 4, 27245);
-    			attr_dev(div17, "class", "scrubbing-bar svelte-v7wju");
-    			add_location(div17, file, 913, 3, 26416);
-    			attr_dev(div18, "class", "footer svelte-v7wju");
-    			add_location(div18, file, 912, 2, 26391);
-    			attr_dev(div19, "class", "main-content svelte-v7wju");
-    			add_location(div19, file, 761, 1, 17159);
-    			attr_dev(div20, "class", "svelte-v7wju");
-    			add_location(div20, file, 752, 0, 16837);
+    			attr_dev(input4, "class", "svelte-vq7zdm");
+    			add_location(input4, file, 925, 4, 27244);
+    			attr_dev(div17, "class", "scrubbing-bar svelte-vq7zdm");
+    			add_location(div17, file, 913, 3, 26415);
+    			attr_dev(div18, "class", "footer svelte-vq7zdm");
+    			add_location(div18, file, 912, 2, 26390);
+    			attr_dev(div19, "class", "main-content svelte-vq7zdm");
+    			add_location(div19, file, 761, 1, 17158);
+    			attr_dev(div20, "class", "svelte-vq7zdm");
+    			add_location(div20, file, 752, 0, 16836);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
