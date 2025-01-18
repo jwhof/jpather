@@ -420,7 +420,7 @@
 		max-height: 80vh;
 		min-width: 40vh;
 		min-height: 40vh;
-		background: url('/good-field-image.png') no-repeat center center;
+		background: url('./good-field-image.png') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
 	}
@@ -834,7 +834,7 @@
 
 				
 				{#if $paths.length > 0}
-					<img src="/robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
+					<img src="./robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
 				{/if}
 
 			
