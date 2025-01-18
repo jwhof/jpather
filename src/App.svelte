@@ -857,12 +857,16 @@
 						<div class="path-header">
 							<div class="path-and-color">
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<!-- svelte-ignore a11y-no-static-element-interactions -->
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={(!(path.id == 0 || path.id == $paths.length - 1)) ? "black" : "gray"} style="cursor: {(!(path.id == 0 || path.id == $paths.length - 1)) ? 'pointer' : 'default'}" on:click={() => { if (!(path.id == 0 || path.id == $paths.length - 1)) { const temp = $paths[path.id + 1]; $paths[path.id + 1] = { ...$paths[path.id], id: path.id + 1 }; $paths[path.id] = { ...temp, id: path.id }; paths.set($paths); checkAutoLinkControlPoints();}}}><path d="M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z"/></svg>
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<!-- svelte-ignore a11y-no-static-element-interactions -->
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={!(path.id == 0 || path.id == 1) ? "black" : "gray"} style="cursor: {!(path.id == 0 || path.id == 1) ? 'pointer' : 'default'}" on:click={() => { if (!(path.id == 0 || path.id == 1)) { const temp = $paths[path.id - 1]; $paths[path.id - 1] = { ...$paths[path.id], id: path.id - 1 }; $paths[path.id] = { ...temp, id: path.id }; paths.set($paths); checkAutoLinkControlPoints();}}}><path d="M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z"/></svg>
 								<input type="color" class="color-circle" style="background-color: {path.color};" bind:value={path.color} on:input={() => updatePathColor(path.id, path.color)} />
 								<p class="path-title" style="user-select:none;">Path {path.id + 1}</p>
 							</div>
+							<!-- svelte-ignore a11y-no-static-element-interactions -->
+							<!-- svelte-ignore a11y-no-static-element-interactions -->
 							<div class="add-and-remove">
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={($paths.length > 1) ? "#FF474D" : "gray"} on:click={() => { if ($paths.length > 1) deletePath(path.id); }} style="cursor: {($paths.length > 1) ? 'pointer' : 'default'};"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
@@ -891,6 +895,7 @@
 												<!-- svelte-ignore a11y-click-events-have-key-events -->
 
 											{#if (i > 1)}
+											<!-- svelte-ignore a11y-no-static-element-interactions -->
 											<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={() => { if (path.controlPoints.length > 2) { path.controlPoints.splice(i, 1); generateBezierCurve(path.id); paths.set($paths); } }} style="cursor: pointer;"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 											{/if}
 											</div>
@@ -909,7 +914,9 @@
 			<div class="scrubbing-bar">
 				<div class="play-button">
 					<!-- svelte-ignore a11y-click-events-have-key-events -->
+					<!-- svelte-ignore a11y-no-static-element-interactions -->
 					{#if !isPlaying}
+					 	<!-- svelte-ignore a11y-no-static-element-interactions -->
 					 	<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#90EE90" on:click={playPath}><path d="M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z"/></svg>
 					{:else}
 						<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={pausePath}><path d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z"/></svg>
