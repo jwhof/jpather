@@ -878,7 +878,7 @@
 								{#each path.controlPoints as { x, y }, i}
 									<div class="control-point-box">
 										{#if (path.controlPoints.length >= 2) && (i > 0) && (i < 2)}
-											<label for="control-point-{path.id}-{i}" style="user-select:none;">Endpoint:</label>
+											<label for="control-point-{path.id}-{i}" style="user-select:none;">Test Endpoint:</label>
 										{:else if (i > 0)}
 											<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i-1}:</label>
 										{/if}
