@@ -134,6 +134,24 @@
 		});
 	}
 
+	function addControlPointToPathWithIndex(pathId, index) {
+		paths.update(paths => {
+			const path = paths.find(p => p.id === pathId);
+			console.log(path.controlPoints);
+			if (path) {
+				const angle = Math.random() * 2 * Math.PI;
+				const distance = 50;
+				x = 72 + Math.cos(angle) * distance;
+				y = 72 + Math.sin(angle) * distance;
+				path.controlPoints.splice(index, 0, { x, y });
+				path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
+			}
+			console.log(path.controlPoints);
+
+			return paths;
+		});
+	}
+
 	function updatePathColor(pathId, color) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
@@ -870,19 +888,19 @@
 							<div class="add-and-remove">
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={($paths.length > 1) ? "#FF474D" : "gray"} on:click={() => { if ($paths.length > 1) deletePath(path.id); }} style="cursor: {($paths.length > 1) ? 'pointer' : 'default'};"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
-								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#90EE90" on:click={() => addControlPointToPath(path.id)} on:keydown={(e) => { if (e.key === 'Enter') addControlPointToPath(path.id, x, y); }} style="cursor: pointer;"><path d="M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#90EE90" on:click={() => addControlPointToPathWithIndex(path.id, path.controlPoints.length - 1)} on:keydown={(e) => { if (e.key === 'Enter') addControlPointToPathWithIndex(path.id, path.controlPoints.length - 1); }} style="cursor: pointer;"><path d="M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
 							</div>
 							
 						</div>
 							<div class="path-control-points">
 								{#each path.controlPoints as { x, y }, i}
 									<div class="control-point-box">
-										{#if (path.controlPoints.length >= 2) && (i > 0) && (i < 2)}
+										{#if (i == 0)}
 											<label for="control-point-{path.id}-{i}" style="user-select:none;">Endpoint:</label>
-										{:else if (i > 0)}
-											<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i-1}:</label>
+										{:else if (i > 0 && i!=path.controlPoints.length-1)}
+											<label for="control-point-{path.id}-{i}" style="user-select:none;">Control Point {i}:</label>
 										{/if}
-										{#if i > 0 || path.controlPoints.length === 1}
+										{#if i > 0 && i!=path.controlPoints.length-1}
 											<div class="control-point-mini-box">
 												<div class="control-point-mini-box-x">
 													<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
@@ -894,12 +912,25 @@
 												</div>
 												<!-- svelte-ignore a11y-click-events-have-key-events -->
 
-											{#if (i > 1)}
+											{#if (i > 0)}
 											<!-- svelte-ignore a11y-no-static-element-interactions -->
 											<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={() => { if (path.controlPoints.length > 2) { path.controlPoints.splice(i, 1); generateBezierCurve(path.id); paths.set($paths); } }} style="cursor: pointer;"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 											{/if}
 											</div>
+										{:else if (i==0)}
+										<div class="control-point-mini-box">
+											<div class="control-point-mini-box-x">
+												<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
+												<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[path.controlPoints.length-1].x} on:input={() => generateBezierCurve(path.id)} />
+											</div>
+											<div class="control-point-mini-box-y">
+												<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
+												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[path.controlPoints.length-1].y} on:input={() => generateBezierCurve(path.id)} />
+											</div>
+											<!-- svelte-ignore a11y-click-events-have-key-events -->
+										</div>
 										{/if}
+
 									</div>
 								{/each}
 						</div>
