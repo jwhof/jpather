@@ -98,7 +98,8 @@
 				id: paths.length,
 				controlPoints: [],
 				bezierCurvePoints: [],
-				color: getRandomBrightColor()
+				color: getRandomBrightColor(),
+				robotHeading: 'tangential' // default heading
 			};
 			if (paths.length > 0) {
 				const lastPath = paths[paths.length - 1];
@@ -108,29 +109,14 @@
 					const distance = 50;
 					const x = 72 + Math.cos(angle) * distance;
 					const y = 72 + Math.sin(angle) * distance;
-					newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y});
+					newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y });
 					newPath.controlPoints.push({ x, y });
 				}
 			} else if (paths.length === 0) {
-				newPath.controlPoints.push({x:12, y:96});
-				newPath.controlPoints.push({x:36, y:96});
+				newPath.controlPoints.push({ x: 12, y: 96 });
+				newPath.controlPoints.push({ x: 36, y: 96 });
 			}
 			return [...paths, newPath];
-		});
-	}
-
-	function addControlPointToPath(pathId) {
-		paths.update(paths => {
-			const path = paths.find(p => p.id === pathId);
-			if (path) {
-				const angle = Math.random() * 2 * Math.PI;
-				const distance = 50;
-				x = 72 + Math.cos(angle) * distance;
-				y = 72 + Math.sin(angle) * distance;
-				path.controlPoints.splice(path.controlPoints.length - 1, 0, { x, y });
-				path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
-			}
-			return paths;
 		});
 	}
 
@@ -176,27 +162,27 @@
 	let robotX = 12;
 	let robotY = 96;
 
-	function updateRobotPosition() {
-		let totalPoints = 0;
-		$paths.forEach(path => {
-			totalPoints += path.bezierCurvePoints.length;
-		});
+	// function updateRobotPosition() {
+	// 	let totalPoints = 0;
+	// 	$paths.forEach(path => {
+	// 		totalPoints += path.bezierCurvePoints.length;
+	// 	});
 
-		let accumulatedPoints = 0;
-		for (let path of $paths) {
-			if (scrubValue <= (accumulatedPoints + path.bezierCurvePoints.length) / totalPoints * 100) {
-				const relativeScrubValue = (scrubValue - accumulatedPoints / totalPoints * 100) / (path.bezierCurvePoints.length / totalPoints * 100);
-				const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1));
-				const point = path.bezierCurvePoints[pointIndex];
-				if (point) {
-					robotX = point.x;
-					robotY = point.y;
-				}
-				break;
-			}
-			accumulatedPoints += path.bezierCurvePoints.length;
-		}
-	}
+	// 	let accumulatedPoints = 0;
+	// 	for (let path of $paths) {
+	// 		if (scrubValue <= (accumulatedPoints + path.bezierCurvePoints.length) / totalPoints * 100) {
+	// 			const relativeScrubValue = (scrubValue - accumulatedPoints / totalPoints * 100) / (path.bezierCurvePoints.length / totalPoints * 100);
+	// 			const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1));
+	// 			const point = path.bezierCurvePoints[pointIndex];
+	// 			if (point) {
+	// 				robotX = point.x;
+	// 				robotY = point.y;
+	// 			}
+	// 			break;
+	// 		}
+	// 		accumulatedPoints += path.bezierCurvePoints.length;
+	// 	}
+	// }
 
 
 	let isPlaying = false;
@@ -256,6 +242,46 @@
 				pathStartTime = Date.now();
 			}
 		}, animInterval);
+	}
+
+	function updateRobotPosition() {
+		let totalPoints = 0;
+		$paths.forEach(path => {
+			totalPoints += path.bezierCurvePoints.length;
+		});
+
+		let accumulatedPoints = 0;
+		for (let path of $paths) {
+			if (scrubValue <= (accumulatedPoints + path.bezierCurvePoints.length) / totalPoints * 100) {
+				const relativeScrubValue = (scrubValue - accumulatedPoints / totalPoints * 100) / (path.bezierCurvePoints.length / totalPoints * 100);
+				const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1));
+				const point = path.bezierCurvePoints[pointIndex];
+				if (point) {
+					robotX = point.x;
+					robotY = point.y;
+
+					const robotElement = document.getElementById('robot');
+					if (robotElement) {
+						if (path.robotHeading === 'tangential') {
+							const nextPoint = path.bezierCurvePoints[Math.min(pointIndex + 1, path.bezierCurvePoints.length - 1)];
+                            const prevPoint = path.bezierCurvePoints[Math.max(pointIndex - 1, 0)];
+                            const angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
+                            robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+						} else if (path.robotHeading === 'linear') {
+							const startAngle = path.startAngle || 0;
+							const endAngle = path.endAngle || 0;
+							const angle = startAngle - (endAngle - startAngle) * relativeScrubValue;
+							robotElement.style.transform = `translate(-50%, 50%) rotate(${angle + Math.PI / 2}rad)`;
+						} else if (path.robotHeading === 'constant') {
+							const angle = path.constantAngle || 0;
+							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+						}
+					}
+				}
+				break;
+			}
+			accumulatedPoints += path.bezierCurvePoints.length;
+		}
 	}
 
 	function pausePath() {
@@ -744,8 +770,9 @@
 
 	#robot {
 		position: absolute;
-		transform: translate(-50%, 50%);
+		transform: translate(-50%, 50%) rotate(90deg);
 		z-index: 0;
+		user-select: none;
 	}
 
 	img {
@@ -761,10 +788,44 @@
 
 	#robotUnits {
 		font-size: 0.75rem;
+		width: auto;
+	}
+	
+	.standard-input-box {
+		width: 100px;
 	}
 
+	.start-pos-box {
+		width: 50px;
+	}
 
+	#robot-heading {
+		font-size: 0.75rem;
+		width: auto;
+		margin-bottom: 0rem;
+		height:27.59px;
+		margin-left:10px;
+	}
 
+	#reverse {
+		margin-bottom: 0rem;
+	}
+
+	.control-point-mini-box > label {
+		font-size: 0.75rem;
+		margin: 4px;
+		margin-top: 0px;
+		margin-bottom: 0px;
+		font-weight: 750;
+	}
+
+	#start-angle, #end-angle, #constant-angle {
+		font-size:0.75rem;
+		font-weight: 750;
+		width: 65px;
+		margin-bottom: 0rem;
+		margin-left: 4px;
+	}
 
 </style>
 
@@ -816,14 +877,14 @@
 								<!-- svelte-ignore a11y-label-has-associated-control -->
 								<label class="cp-x" style="user-select:none;">X:</label>
 								{#if $paths.length > 0}
-								<input class="standard-input-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].x} on:input={() => updateRobotPosition()}/>
+								<input class="start-pos-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].x} on:input={() => updateRobotPosition()}/>
 								{/if}
 							</div>
 							<div class="control-point-mini-box-y">
 								<!-- svelte-ignore a11y-label-has-associated-control -->
 								<label class="cp-x" style="user-select:none;">Y:</label>
 								{#if $paths.length > 0}
-								<input class="standard-input-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].y} on:input={() => updateRobotPosition()}/>
+								<input class="start-pos-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].y} on:input={() => updateRobotPosition()}/>
 								{/if}
 							</div>
 						</div>	
@@ -904,18 +965,22 @@
 											<div class="control-point-mini-box">
 												<div class="control-point-mini-box-x">
 													<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
-													<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+													<input id="cp-input" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
 												</div>
 												<div class="control-point-mini-box-y">
 													<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
-													<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+													<input id="cp-input" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
 												</div>
-												<!-- svelte-ignore a11y-click-events-have-key-events -->
 
 											{#if (i > 0)}
 											<!-- svelte-ignore a11y-no-static-element-interactions -->
+											<!-- svelte-ignore a11y-click-events-have-key-events -->
+
+
 											<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#FF474D" on:click={() => { if (path.controlPoints.length > 2) { path.controlPoints.splice(i, 1); generateBezierCurve(path.id); paths.set($paths); } }} style="cursor: pointer;"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>
 											{/if}
+
+											
 											</div>
 										{:else if (i==0)}
 										<div class="control-point-mini-box">
@@ -928,6 +993,29 @@
 												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[path.controlPoints.length-1].y} on:input={() => generateBezierCurve(path.id)} />
 											</div>
 											<!-- svelte-ignore a11y-click-events-have-key-events -->
+											<select id="robot-heading" class="standard-input-box" bind:value={path.robotHeading} on:change={() => generateBezierCurve(path.id)}>
+												<option value="tangential">Tangential</option>
+												<option value="linear">Linear</option>
+												<option value="constant">Constant</option>
+											</select>
+	
+											{#if path.robotHeading === 'linear'}
+												<div class="control-point-mini-box">
+													<input id="start-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.startAngle}  on:input={() => updateRobotPosition()}/>
+												</div>
+												<div class="control-point-mini-box">
+													<input id="end-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.endAngle} on:input={() => updateRobotPosition()}/>
+												</div>
+											{:else if path.robotHeading === 'tangential'}
+												<div class="control-point-mini-box">
+													<label for="reverse" style="user-select:none;">Reverse:</label>
+													<input id="reverse" type="checkbox" bind:checked={path.reverse} on:input={() => updateRobotPosition()}/>
+												</div>
+											{:else if path.robotHeading === 'constant'}
+												<div class="control-point-mini-box">
+													<input id="constant-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.constantAngle} on:input={() => updateRobotPosition()}/>
+												</div>
+											{/if}
 										</div>
 										{/if}
 
