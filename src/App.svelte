@@ -162,29 +162,6 @@
 	let robotX = 12;
 	let robotY = 96;
 
-	// function updateRobotPosition() {
-	// 	let totalPoints = 0;
-	// 	$paths.forEach(path => {
-	// 		totalPoints += path.bezierCurvePoints.length;
-	// 	});
-
-	// 	let accumulatedPoints = 0;
-	// 	for (let path of $paths) {
-	// 		if (scrubValue <= (accumulatedPoints + path.bezierCurvePoints.length) / totalPoints * 100) {
-	// 			const relativeScrubValue = (scrubValue - accumulatedPoints / totalPoints * 100) / (path.bezierCurvePoints.length / totalPoints * 100);
-	// 			const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1));
-	// 			const point = path.bezierCurvePoints[pointIndex];
-	// 			if (point) {
-	// 				robotX = point.x;
-	// 				robotY = point.y;
-	// 			}
-	// 			break;
-	// 		}
-	// 		accumulatedPoints += path.bezierCurvePoints.length;
-	// 	}
-	// }
-
-
 	let isPlaying = false;
 	let wasPaused = false;
 	let isStartingFromBeginning = true;
