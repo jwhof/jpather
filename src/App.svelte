@@ -15,11 +15,24 @@
 	let robotWidth = 18;
 
 	let robotUnits = 'inches';
+	let rotationUnits = 'degrees';
 
 	$: {
 		const conversionFactor = robotUnits === 'inches' ? 1 : 2.54;
 		robotLength = displayLength / conversionFactor;
 		robotWidth = displayWidth / conversionFactor;
+	}
+
+	$: {
+		const angleConversionFactor = rotationUnits === 'degrees' ? (Math.PI / 180) : 1;
+		$paths.forEach(path => {
+			if (path.robotHeading === 'linear') {
+				path.startAngle = (path.startAngleDegrees || 0) * angleConversionFactor;
+				path.endAngle = (path.endAngleDegrees || 0) * angleConversionFactor;
+			} else if (path.robotHeading === 'constant') {
+				path.constantAngle = (path.constantAngleDegrees || 0) * angleConversionFactor;
+			}
+		});
 	}
 
 	function getRandomBrightColor() {
@@ -99,7 +112,7 @@
 				controlPoints: [],
 				bezierCurvePoints: [],
 				color: getRandomBrightColor(),
-				robotHeading: 'tangential' // default heading
+				robotHeading: 'constant' // default heading
 			};
 			if (paths.length > 0) {
 				const lastPath = paths[paths.length - 1];
@@ -390,6 +403,43 @@
 		generateBezierCurve(1);
 	}
 
+	
+	function showCodeWindow() {
+		const codeWindow = window.open('', 'CodeWindow', 'width=600,height=400');
+		let codeContent = 'private Path ';
+
+		$paths.forEach((path, index) => {
+			codeContent += `p${index + 1}`;
+			if (index < $paths.length - 1) {
+				codeContent += ', ';
+			}
+		});
+		codeContent += ';\n\n';
+
+		codeContent += 'public void buildPaths() {\n';
+
+		$paths.forEach((path, index) => {
+			const points = path.controlPoints.map(point => `new Point(${point.x.toFixed(3)}, ${point.y.toFixed(3)}, Point.CARTESIAN)`).join(',\n                ');
+			const bezierType = path.controlPoints.length === 2 ? 'BezierLine' : 'BezierCurve';
+			codeContent += `    p${index + 1} = new Path(new ${bezierType}(\n                ${points}\n        )\n    );\n\n`;
+
+			if (path.robotHeading === 'constant') {
+				const angle = rotationUnits === 'degrees' ? `Math.toRadians(${path.constantAngleDegrees || 0})` : `${path.constantAngleDegrees || 0}`;
+				codeContent += `    p${index + 1}.setConstantHeadingInterpolation(${angle});\n\n`;
+			} else if (path.robotHeading === 'tangential') {
+				codeContent += `    p${index + 1}.setTangentHeadingInterpolation();\n\n`;
+			} else if (path.robotHeading === 'linear') {
+				const startAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.startAngleDegrees || 0})` : `${path.startAngleDegrees || 0}`;
+				const endAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.endAngleDegrees || 0})` : `${path.endAngleDegrees || 0}`;
+				codeContent += `    p${index + 1}.setLinearHeadingInterpolation(${startAngle}, ${endAngle});\n\n`;
+			}
+		});
+
+		codeContent += '}';
+
+		codeWindow.document.write('<pre>' + codeContent + '</pre>');
+		codeWindow.document.close();
+	}
 
 
 
@@ -804,12 +854,36 @@
 		margin-left: 4px;
 	}
 
+	#rotationUnits {
+		font-size: 0.75rem;
+		width: auto;
+		margin-bottom: 0rem;
+	}
+
+	#code-window-btn {
+		margin: 4px;
+		cursor:pointer;
+	}
+
+	.export-import {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-direction: row;
+	}
+
+	.export-import > * {
+		margin: 4px;
+	}
+
 </style>
 
 <div>
 	<div class="header">
 		<h1 class="page-title">JPather</h1>
 		<div class="export-import">
+			<!-- svelte-ignore a11y-click-events-have-key-events -->
+			<svg id="code-window-btn" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="black" on:click={showCodeWindow}><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z"/></svg>
 			<button on:click={importControlPoints} style="user-select:none;">Import Control Points</button>
 			<button on:click={exportControlPoints} style="user-select:none;">Export Control Points</button>
 		</div>
@@ -874,6 +948,13 @@
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Auto-link Paths:</label>
 							<input id="auto-link-paths" type="checkbox" bind:checked={autoLinkPaths} />
+						</div>
+						<div class="advanced-options">
+							<label for="rotationUnits" style="user-select:none;">Rotational Units:</label>
+							<select id="rotationUnits" class="standard-input-box" bind:value={rotationUnits}>
+								<option value="degrees">Degrees</option>
+								<option value="radians">Radians</option>
+							</select>
 						</div>
 					</div>
 				</div>
@@ -971,17 +1052,17 @@
 											</div>
 											<!-- svelte-ignore a11y-click-events-have-key-events -->
 											<select id="robot-heading" class="standard-input-box" bind:value={path.robotHeading} on:change={() => generateBezierCurve(path.id)}>
+												<option value="constant">Constant</option>
 												<option value="tangential">Tangential</option>
 												<option value="linear">Linear</option>
-												<option value="constant">Constant</option>
 											</select>
 	
 											{#if path.robotHeading === 'linear'}
 												<div class="control-point-mini-box">
-													<input id="start-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.startAngle}  on:input={() => updateRobotPosition()}/>
+													<input id="start-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.startAngleDegrees}  on:input={() => updateRobotPosition()}/>
 												</div>
 												<div class="control-point-mini-box">
-													<input id="end-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.endAngle} on:input={() => updateRobotPosition()}/>
+													<input id="end-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.endAngleDegrees} on:input={() => updateRobotPosition()}/>
 												</div>
 											{:else if path.robotHeading === 'tangential'}
 												<div class="control-point-mini-box">
@@ -990,7 +1071,7 @@
 												</div>
 											{:else if path.robotHeading === 'constant'}
 												<div class="control-point-mini-box">
-													<input id="constant-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.constantAngle} on:input={() => updateRobotPosition()}/>
+													<input id="constant-angle" class="standard-input-box" type="number" step="0.01" bind:value={path.constantAngleDegrees} on:input={() => updateRobotPosition()}/>
 												</div>
 											{/if}
 										</div>
