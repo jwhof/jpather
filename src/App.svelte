@@ -167,6 +167,14 @@
 			updatedPaths.forEach((path, index) => {
 				path.id = index;
 			});
+			if (autoLinkPaths && pathId > 0 && pathId < paths.length - 1) {
+				const previousPath = updatedPaths[pathId - 1];
+				const nextPath = updatedPaths[pathId];
+				if (previousPath && nextPath) {
+					nextPath.controlPoints[0] = { ...previousPath.controlPoints[previousPath.controlPoints.length - 1] };
+					nextPath.bezierCurvePoints = calculateBezier(nextPath.controlPoints, 100);
+				}
+			}
 			return updatedPaths;
 		});
 	}
@@ -176,7 +184,7 @@
 	let robotY = 96;
 
 	let isPlaying = false;
-	let wasPaused = false;
+	let wasPaused = true;
 	let isStartingFromBeginning = true;
 	$: animTime = 1.56 * $paths.length;
 	let intervalId = null;
@@ -190,6 +198,7 @@
 	let currentPathIndex = 0;
 	let pathStartTime = 0;
 	let shouldRepeatPath = true;
+	let robotLiveAngle = 0;
 
 	function playPath() {
 		if (isPlaying) return;
@@ -254,17 +263,21 @@
 					if (robotElement) {
 						if (path.robotHeading === 'tangential') {
 							const nextPoint = path.bezierCurvePoints[Math.min(pointIndex + 1, path.bezierCurvePoints.length - 1)];
-                            const prevPoint = path.bezierCurvePoints[Math.max(pointIndex - 1, 0)];
-                            const angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
-                            robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+							const prevPoint = path.bezierCurvePoints[Math.max(pointIndex - 1, 0)];
+							const angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
+							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
 						} else if (path.robotHeading === 'linear') {
 							const startAngle = path.startAngle || 0;
 							const endAngle = path.endAngle || 0;
-							const angle = startAngle - (endAngle - startAngle) * relativeScrubValue;
-							robotElement.style.transform = `translate(-50%, 50%) rotate(${angle + Math.PI / 2}rad)`;
+							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
+							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
+
 						} else if (path.robotHeading === 'constant') {
 							const angle = path.constantAngle || 0;
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+							robotLiveAngle = rotationUnits === 'degrees' ? -angle * (180 / Math.PI) : -angle;
 						}
 					}
 				}
@@ -346,8 +359,13 @@
 			const movePoint = (moveEvent) => {
 				const newMouseX = moveEvent.clientX - rect.left;
 				const newMouseY = moveEvent.clientY - rect.top;
-				const newX = newMouseX / rect.width * 144;
-				const newY = 144 - (newMouseY / rect.height * 144);
+				let newX = newMouseX / rect.width * 144;
+				let newY = 144 - (newMouseY / rect.height * 144);
+
+				const hitboxOffsetX = robotWidth / 2;
+				const hitboxOffsetY = robotLength / 2;
+				newX = Math.max(hitboxOffsetX, Math.min(144 - hitboxOffsetX, newX));
+				newY = Math.max(hitboxOffsetY, Math.min(144 - hitboxOffsetY, newY));
 
 				paths.update(paths => {
 					const path = paths.find(p => p.id === selectedPathId);
@@ -441,6 +459,7 @@
 		codeWindow.document.close();
 	}
 
+	let shouldShowHitbox = false;
 
 
 
@@ -529,6 +548,14 @@
 		height: 45vh;
 	}
 
+	.robot-options {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-direction: row;
+		border:none;
+	}
+
 
 	.robot-options-menu > * {
 		margin: 0.5rem;
@@ -600,10 +627,6 @@
 	.path-control-points {
 		display: block;
 		margin: 0.5rem;
-	}
-
-	.standard-input-box {
-		width: 125px;
 	}
 
 	
@@ -684,19 +707,33 @@
 		font-weight: 750;
 	}
 
-	.cp-x {
-		margin: 0.3rem;
-		font-weight: 400 !important;
+	.control-point-mini-box-heading > label {
+		font-size: 0.75rem;
+		font-weight: 750;
 	}
 
-	.cp-y {
+	.control-point-mini-box-heading {
+		display: flex;
+		align-items: center;
+		margin: 0.1rem;
+		flex-direction: row;
+	}
+
+	.control-point-mini-box-heading > input {
+		font-size: 0.75rem;
+		font-weight: 750;
+		margin:0rem;
+	}
+
+	.cp-x, .cp-y, .cp-heading {
 		margin: 0.3rem;
 		font-weight: 400 !important;
 	}
 
 	.robot-options > label {
 		font-size:0.75rem;
-		margin: 0.2rem;
+		margin-top: 0rem;
+		margin-bottom: 0rem;
 	}
 
 	.robot-options > input {
@@ -819,7 +856,7 @@
 	}
 	
 	.standard-input-box {
-		width: 100px;
+		width: 75px;
 	}
 
 	.start-pos-box {
@@ -876,6 +913,28 @@
 		margin: 4px;
 	}
 
+	#live-pos {
+		flex-direction: column;
+		justify-content: left;
+		align-items: left;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.cp-x-y {
+		flex-direction: row;
+		justify-content: left;
+		align-items: left;
+		display: flex;
+		align-items: flex-start;
+	}
+
+	.adv-options {
+		font-size:0.75rem;
+		margin: 0.2rem;
+	}
+
 </style>
 
 <div>
@@ -920,7 +979,7 @@
 						<h2 id="field-options" class="section-title" style="user-select:none;">Field Options</h2>
 
 						<!-- svelte-ignore a11y-label-has-associated-control -->
-						<label style="user-select:none;">Starting Position:</label>
+						<label class="adv-options" style="user-select:none;">Starting Position:</label>
 
 						
 						<div class="control-point-mini-box">
@@ -940,7 +999,34 @@
 							</div>
 						</div>	
 
+						<!-- svelte-ignore a11y-label-has-associated-control -->
+						<label class="adv-options" style="user-select:none;">Live Position:</label>
+						<div id="live-pos" class="control-point-mini-box">
+							<div class="cp-x-y">
+								<div class="control-point-mini-box-x">
+									<!-- svelte-ignore a11y-label-has-associated-control -->
+									<label class="cp-x" style="user-select:none;">X:</label>
+									<input class="start-pos-box" type="number" step="0.001" bind:value={robotX} readonly />
+								</div>
+								<div class="control-point-mini-box-y">
+									<!-- svelte-ignore a11y-label-has-associated-control -->
+									<label class="cp-y" style="user-select:none;">Y:</label>
+									<input class="start-pos-box" type="number" step="0.001" bind:value={robotY} readonly />
+								</div>
+							</div>
+								<div class="control-point-mini-box-heading">
+									<!-- svelte-ignore a11y-label-has-associated-control -->
+									<label class="cp-heading" style="user-select:none;">Heading:</label>
+									<input class="start-pos-box" type="number" step="0.001" value={Math.round(robotLiveAngle)} readonly />
+								</div>
+						</div>
+
 						<h2 id="advanced-options" class="section-title" style="user-select:none;">Advanced Options</h2>
+						<div class="advanced-options">
+							<label for="field-length" style="user-select:none;">Show Robot Hitbox: </label>
+							<input id="auto-link-paths" type="checkbox" bind:checked={shouldShowHitbox} />
+						</div>
+
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Infinite Path Looping: </label>
 							<input id="auto-link-paths" type="checkbox" bind:checked={shouldRepeatPath} />
@@ -1023,11 +1109,11 @@
 											<div class="control-point-mini-box">
 												<div class="control-point-mini-box-x">
 													<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
-													<input id="cp-input" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].x} on:input={() => generateBezierCurve(path.id)} />
+													<input id="cp-input" class="standard-input-box" type="number" step="1" value={path.controlPoints[i].x} on:input={(e) => { path.controlPoints[i].x = parseFloat(e.target.value); generateBezierCurve(path.id); paths.set($paths); }} />
 												</div>
 												<div class="control-point-mini-box-y">
 													<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
-													<input id="cp-input" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[i].y} on:input={() => generateBezierCurve(path.id)} />
+													<input id="cp-input" class="standard-input-box" type="number" step="1" value={path.controlPoints[i].y} on:input={(e) => { path.controlPoints[i].y = parseFloat(e.target.value); generateBezierCurve(path.id); paths.set($paths); }} />
 												</div>
 
 											{#if (i > 0)}
@@ -1044,11 +1130,11 @@
 										<div class="control-point-mini-box">
 											<div class="control-point-mini-box-x">
 												<label class="cp-x" for="control-point-{path.id}-{i}" style="user-select:none;">X:</label>
-												<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[path.controlPoints.length-1].x} on:input={() => generateBezierCurve(path.id)} />
+												<input id="control-point-{path.id}-{i}" class="standard-input-box" type="number" step="1" value={path.controlPoints[path.controlPoints.length-1].x} on:input={(e) => { path.controlPoints[path.controlPoints.length-1].x = parseFloat(e.target.value); generateBezierCurve(path.id); paths.set($paths); }} />
 											</div>
 											<div class="control-point-mini-box-y">
 												<label class="cp-y" for="control-point-{path.id}-{i}-y" style="user-select:none;">Y:</label>
-												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="0.01" bind:value={path.controlPoints[path.controlPoints.length-1].y} on:input={() => generateBezierCurve(path.id)} />
+												<input id="control-point-{path.id}-{i}-y" class="standard-input-box" type="number" step="1" value={path.controlPoints[path.controlPoints.length-1].y} on:input={(e) => { path.controlPoints[path.controlPoints.length-1].y = parseFloat(e.target.value); generateBezierCurve(path.id); paths.set($paths); }} />
 											</div>
 											<!-- svelte-ignore a11y-click-events-have-key-events -->
 											<select id="robot-heading" class="standard-input-box" bind:value={path.robotHeading} on:change={() => generateBezierCurve(path.id)}>

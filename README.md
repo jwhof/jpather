@@ -16,17 +16,19 @@ run npm install --save-dev rollup-plugin-svelte
 - [x] add user-facing option for infinite looping
 - [x] fix path deletion indexing problem
 - [x] ES_ add autoLink paths together
-- [ ] add delete autoLink
+- [x] add delete autoLink
 - [ ] add update path links on autoLink enabling
 - [x] add labels for X and Y on the control point menu + bold the numbers?
 - [x] add units for robot length and width
 - [ ] add dark mode
 - [x] ES_add control point deletion option
 - [x] replace robot image
-- [ ] ES_ add robot bounding box --> points are unable to be dragged outside
+- [x] ES_ add robot bounding box --> points are unable to be dragged outside
 - [x] add motion blur
 - [ ] ES_ add different path colors in scrubbing bar
 - [x] add margin-bottom between paths
-- [ ] ES_ add robot heading along path
+- [x] ES_ add robot heading along path
 - [ ] ES_ add multiple path imports ontop of each other
 - [ ] ES_ add robot hitboxes
+- [x] fix input box bug
+- [x] fix relative robot heading bug
