@@ -32,3 +32,4 @@ run npm install --save-dev rollup-plugin-svelte
 - [ ] ES_ add robot hitboxes
 - [x] fix input box bug
 - [x] fix relative robot heading bug
+- [x] add tangential reverse
