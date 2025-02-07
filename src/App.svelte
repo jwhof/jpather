@@ -76,7 +76,12 @@
 		const data = $paths.map(path => ({
 			id: path.id,
 			controlPoints: path.controlPoints,
-			color: path.color
+			color: path.color,
+			robotHeading: path.robotHeading,
+			startAngleDegrees: path.startAngleDegrees,
+			endAngleDegrees: path.endAngleDegrees,
+			constantAngleDegrees: path.constantAngleDegrees,
+			reverse: path.reverse
 		}));
 		const json = JSON.stringify(data, null, 2);
 		const blob = new Blob([json], { type: 'application/json' });
@@ -461,7 +466,98 @@
 
 	let shouldShowHitbox = false;
 
+	function bernsteinPolynomial(n, i, t) {
+		return (factorial(n) / (factorial(i) * factorial(n - i))) * (t ** i) * ((1 - t) ** (n - i));
+	}
 
+	function getPointAt(t, p0, p1, p2) {
+    const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x;
+    const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y;
+    return { x, y };
+	}
+
+	function getDerivativeAt(t, p0, p1, p2) {
+		const d1 = { x: 2 * (p1.x - p0.x), y: 2 * (p1.y - p0.y) };
+		const d2 = { x: 2 * (p2.x - p1.x), y: 2 * (p2.y - p1.y) };
+		
+		const x = (1 - t) * d1.x + t * d2.x;
+		const y = (1 - t) * d1.y + t * d2.y;
+		return { x, y };
+	}
+
+	function getNormalAt(t, p0, p1, p2) {
+		const d = getDerivativeAt(t, p0, p1, p2);
+		const length = Math.sqrt(d.x * d.x + d.y * d.y);
+		return { x: -d.y / length, y: d.x / length }; // Perpendicular vector
+	}
+
+	function getOffsetPointAt(t, p0, p1, p2, offset) {
+		const point = getPointAt(t, p0, p1, p2);
+		const normal = getNormalAt(t, p0, p1, p2);
+		
+		return {
+			left: { x: point.x + normal.x * offset, y: point.y + normal.y * offset },
+			right: { x: point.x - normal.x * offset, y: point.y - normal.y * offset }
+		};
+	}
+
+	// Generate two offset curves
+	function generateHitboxPath(p0, p1, p2, offset) {
+		const leftPath = [];
+		const rightPath = [];
+
+		for (let t = 0; t <= 1; t += 0.01) {
+			const offsetPoints = getOffsetPointAt(t, p0, p1, p2, offset);
+			leftPath.push(offsetPoints.left);
+			rightPath.push(offsetPoints.right);
+		}
+
+		return { leftPath, rightPath };
+	}
+
+	// Usage Example:
+	const p0 = { x: 10, y: 20 };
+	const p1 = { x: 30, y: 60 };
+	const p2 = { x: 50, y: 20 };
+	const hitboxOffset = 5;
+
+	const hitbox = generateHitboxPath(p0, p1, p2, hitboxOffset);
+	console.log(hitbox.leftPath, hitbox.rightPath); // Use this in SVG rendering
+
+
+	let offsetPaths = [];
+
+	$: {
+		offsetPaths = $paths.map(path => ({
+			left: [],
+			right: [],
+			main: [],
+			color: path.color,
+			controlPoints: path.controlPoints,
+		}));
+
+		$paths.forEach((path, pathIndex) => {
+			if (path.controlPoints.length >= 2) {
+				for (let t = 0; t <= 1; t += 0.01) {
+					let leftPoint, rightPoint, mainPoint;
+
+					for (let i = 0; i < path.controlPoints.length - 1; i++) {
+						if (i < path.controlPoints.length - 2) {
+							mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2]);
+							({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2], 5));
+						} else {
+							mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1]);
+							({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1], 5));
+						}
+
+						offsetPaths[pathIndex].left.push(leftPoint);
+						offsetPaths[pathIndex].right.push(rightPoint);
+						offsetPaths[pathIndex].main.push(mainPoint);
+					}
+				}
+			}
+		});
+	}
 
 </script>
   
@@ -959,8 +1055,8 @@
 						<div class="robot-options">
 							<label for="robotUnits" style="user-select:none;">Units:</label>
 							<select id="robotUnits" class="standard-input-box" bind:value={robotUnits}>
-								<option value="inches">Inches</option>
-								<option value="cm">Centimeters</option>
+								<option value="inches" on:change={() => { if (robotUnits === 'cm') { displayLength *= 2.54; displayWidth *= 2.54; } }}>Inches</option>
+								<option value="cm" on:change={() => { if (robotUnits === 'inches') { displayLength /= 2.54; displayWidth /= 2.54; } }}>Centimeters</option>
 							</select>
 						</div>
 
@@ -987,14 +1083,14 @@
 								<!-- svelte-ignore a11y-label-has-associated-control -->
 								<label class="cp-x" style="user-select:none;">X:</label>
 								{#if $paths.length > 0}
-								<input class="start-pos-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].x} on:input={() => updateRobotPosition()}/>
+								<input class="start-pos-box" type="number" step="1" bind:value={$paths[0].controlPoints[0].x} on:input={(e) => { $paths[0].controlPoints[0].x = parseFloat(e.target.value); generateBezierCurve(0); paths.set($paths); updateRobotPosition(); }}/>
 								{/if}
 							</div>
 							<div class="control-point-mini-box-y">
 								<!-- svelte-ignore a11y-label-has-associated-control -->
 								<label class="cp-x" style="user-select:none;">Y:</label>
 								{#if $paths.length > 0}
-								<input class="start-pos-box" type="number" step="0.01" bind:value={$paths[0].controlPoints[0].y} on:input={() => updateRobotPosition()}/>
+								<input class="start-pos-box" type="number" step="1" bind:value={$paths[0].controlPoints[0].y} on:input={(e) => { $paths[0].controlPoints[0].y = parseFloat(e.target.value); generateBezierCurve(0); paths.set($paths); updateRobotPosition(); }}/>
 								{/if}
 							</div>
 						</div>	
@@ -1060,17 +1156,63 @@
 					<img src="./robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
 				{/if}
 
-			
+				{#if shouldShowHitbox}
 					<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
-						{#each $paths as path}
-							<polyline
-								class="curve"
-								points="{path.bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
-								style="stroke: {path.color};"
-							/>
+						{#each offsetPaths as path}
+							{#each path.main as point, i}
+								{#if i < path.main.length - 1}
+									<!-- Main Trajectory -->
+									<line
+										x1={point.x} y1={144 - point.y}
+										x2={path.main[i + 1].x} y2={144 - path.main[i + 1].y}
+										
+										stroke="white"
+										opacity=0.3
+										stroke-width="1"
+									/>
+
+									<!-- Left Hitbox (Ensuring proper point connections) -->
+									{#if path.left[i] && path.left[i + 1]}
+										<line
+											x1={path.left[i].x} y1={144 - path.left[i].y}
+											x2={path.left[i + 1].x} y2={144 - path.left[i + 1].y}
+											stroke="white"
+											opacity=0.3
+											stroke-width="1"
+										/>
+									{/if}
+
+									<!-- Right Hitbox -->
+									{#if path.right[i] && path.right[i + 1]}
+										<line
+											x1={path.right[i].x} y1={144 - path.right[i].y}
+											x2={path.right[i + 1].x} y2={144 - path.right[i + 1].y}
+											stroke="white"
+											opacity=0.3
+											stroke-width="1"
+										/>
+									{/if}
+								{/if}
+							{/each}
 						{/each}
 					</svg>
+				{/if}
 
+					
+
+
+				<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
+					{#each $paths as path}
+						<polyline
+							class="curve"
+							points="{path.bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
+							style="stroke: {path.color};"
+						/>
+					{/each}
+				</svg>
+
+
+					
 
 			</div>
 			
