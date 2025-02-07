@@ -33,3 +33,4 @@ run npm install --save-dev rollup-plugin-svelte
 - [x] fix input box bug
 - [x] fix relative robot heading bug
 - [ ] add auto inch/cm conversion on change
+- [x] add tangential reverse

@@ -269,7 +269,10 @@
 						if (path.robotHeading === 'tangential') {
 							const nextPoint = path.bezierCurvePoints[Math.min(pointIndex + 1, path.bezierCurvePoints.length - 1)];
 							const prevPoint = path.bezierCurvePoints[Math.max(pointIndex - 1, 0)];
-							const angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
+							let angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
+							if (path.reverse) {
+								angle += Math.PI;
+							}
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
 						} else if (path.robotHeading === 'linear') {
@@ -278,7 +281,6 @@
 							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
-
 						} else if (path.robotHeading === 'constant') {
 							const angle = path.constantAngle || 0;
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
@@ -450,7 +452,13 @@
 				const angle = rotationUnits === 'degrees' ? `Math.toRadians(${path.constantAngleDegrees || 0})` : `${path.constantAngleDegrees || 0}`;
 				codeContent += `    p${index + 1}.setConstantHeadingInterpolation(${angle});\n\n`;
 			} else if (path.robotHeading === 'tangential') {
-				codeContent += `    p${index + 1}.setTangentHeadingInterpolation();\n\n`;
+				codeContent += `    p${index + 1}.setTangentHeadingInterpolation();\n`;
+				if (path.reverse) {
+					codeContent += `    p${index + 1}.setReversed(true);\n\n`;
+				} else {
+					codeContent += `    p${index + 1}.setReversed(false);\n\n`;
+				}
+				
 			} else if (path.robotHeading === 'linear') {
 				const startAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.startAngleDegrees || 0})` : `${path.startAngleDegrees || 0}`;
 				const endAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.endAngleDegrees || 0})` : `${path.endAngleDegrees || 0}`;
@@ -1221,8 +1229,9 @@
 					<div class="path" style="border-color: {path.color};">
 						<div class="path-header">
 							<div class="path-and-color">
-								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<!-- svelte-ignore a11y-click-events-have-k</div>ey-events -->
 								<!-- svelte-ignore a11y-no-static-element-interactions -->
+								<!-- svelte-ignore a11y-click-events-have-key-events -->
 								<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill={(!(path.id == 0 || path.id == $paths.length - 1)) ? "black" : "gray"} style="cursor: {(!(path.id == 0 || path.id == $paths.length - 1)) ? 'pointer' : 'default'}" on:click={() => { if (!(path.id == 0 || path.id == $paths.length - 1)) { const temp = $paths[path.id + 1]; $paths[path.id + 1] = { ...$paths[path.id], id: path.id + 1 }; $paths[path.id] = { ...temp, id: path.id }; paths.set($paths); checkAutoLinkControlPoints();}}}><path d="M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z"/></svg>
 								<!-- svelte-ignore a11y-click-events-have-key-events -->
 								<!-- svelte-ignore a11y-no-static-element-interactions -->
