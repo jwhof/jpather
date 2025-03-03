@@ -32,7 +32,8 @@ run npm install --save-dev rollup-plugin-svelte
 - [ ] ES_ add robot hitboxes
 - [x] fix input box bug
 - [x] fix relative robot heading bug
-- [ ] add auto inch/cm conversion on change
+- [x] add auto inch/cm conversion on change
 - [x] add tangential reverse
 - [ ] add path duplication
 - [ ] add PathChains (paths, indented, etc)
+- [x] add current path index

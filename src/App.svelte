@@ -1,27 +1,36 @@
 <script>
-  import { linear } from 'svelte/easing';
+	import { linear } from 'svelte/easing';
 	import { writable } from 'svelte/store';
-  
+	
 	let controlPoints = writable([]);
 	let paths = writable([]);
-
+  
 	let x = 0;
 	let y = 0;
-
-	let displayLength = 18;
-	let displayWidth = 18;
-
+  
+	// Robot dimensions in inches
 	let robotLength = 18;
 	let robotWidth = 18;
-
+  
+	// Unit system
 	let robotUnits = 'inches';
 	let rotationUnits = 'degrees';
+  
+	// Display dimensions (computed based on robotUnits)
+	$: displayLength = parseFloat((robotUnits === 'inches' ? robotLength : robotLength * 2.54).toFixed(2));
+$: displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2));
+  
+	// Functions to update robotLength and robotWidth
+	function updateRobotLength(value) {
+    const newValue = parseFloat(value) || 0; // Treat empty input as 0
+    robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+}
 
-	$: {
-		const conversionFactor = robotUnits === 'inches' ? 1 : 2.54;
-		robotLength = displayLength / conversionFactor;
-		robotWidth = displayWidth / conversionFactor;
-	}
+function updateRobotWidth(value) {
+    const newValue = parseFloat(value) || 0; // Treat empty input as 0
+    robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+}
+
 
 	$: {
 		const angleConversionFactor = rotationUnits === 'degrees' ? (Math.PI / 180) : 1;
@@ -821,6 +830,8 @@
 		align-items: center;
 		margin: 0.1rem;
 		flex-direction: row;
+		justify-content: space-between;
+		width: 100%;
 	}
 
 	.control-point-mini-box-heading > input {
@@ -913,9 +924,10 @@
 
 	.advanced-options {
 		display: flex;
-		flex-direction: row;
-		align-items: center;
-		margin: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0.5rem;
+    width: 100%;
 	}
 
 	.advanced-options > label {
@@ -1039,6 +1051,21 @@
 		margin: 0.2rem;
 	}
 
+	.start-pos-container {
+		display: flex;
+		flex-direction: column;
+		justify-content: left;
+		align-items: left;
+	}
+
+	.current-path {
+		display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.3rem;
+    width: 100%;
+	}
+
 </style>
 
 <div>
@@ -1063,19 +1090,21 @@
 						<div class="robot-options">
 							<label for="robotUnits" style="user-select:none;">Units:</label>
 							<select id="robotUnits" class="standard-input-box" bind:value={robotUnits}>
-								<option value="inches" on:change={() => { if (robotUnits === 'cm') { displayLength *= 2.54; displayWidth *= 2.54; } }}>Inches</option>
-								<option value="cm" on:change={() => { if (robotUnits === 'inches') { displayLength /= 2.54; displayWidth /= 2.54; } }}>Centimeters</option>
+								<option value="inches">Inches</option>
+								<option value="cm">Centimeters</option>
 							</select>
 						</div>
+						
+						
 
 						<div class="robot-options">
 							<label for="robot-length" style="user-select:none;">Robot Length:</label>
-							<input id="robot-length" class="standard-input-box" type="number" step="0.01" bind:value={displayLength} />
+							<input id="robot-length" class="standard-input-box" type="number" step="1" bind:value={displayLength} on:input={(e) => updateRobotLength(parseFloat(e.target.value))} />
 						</div>
-
+						
 						<div class="robot-options">
 							<label for="robot-width" style="user-select:none;">Robot Width:</label>
-							<input id="robot-width" class="standard-input-box" type="number" step="0.01" bind:value={displayWidth} />
+							<input id="robot-width" class="standard-input-box" type="number" step="1" bind:value={displayWidth} on:input={(e) => updateRobotWidth(parseFloat(e.target.value))} />
 						</div>
 						
 
@@ -1083,6 +1112,8 @@
 						<h2 id="field-options" class="section-title" style="user-select:none;">Field Options</h2>
 
 						<!-- svelte-ignore a11y-label-has-associated-control -->
+
+						<div class="start-pos-container">
 						<label class="adv-options" style="user-select:none;">Starting Position:</label>
 
 						
@@ -1102,6 +1133,7 @@
 								{/if}
 							</div>
 						</div>	
+						</div>
 
 						<!-- svelte-ignore a11y-label-has-associated-control -->
 						<label class="adv-options" style="user-select:none;">Live Position:</label>
@@ -1117,12 +1149,18 @@
 									<label class="cp-y" style="user-select:none;">Y:</label>
 									<input class="start-pos-box" type="number" step="0.001" bind:value={robotY} readonly />
 								</div>
-							</div>
 								<div class="control-point-mini-box-heading">
 									<!-- svelte-ignore a11y-label-has-associated-control -->
-									<label class="cp-heading" style="user-select:none;">Heading:</label>
+									<label class="cp-heading" style="user-select:none;">θ:</label>
 									<input class="start-pos-box" type="number" step="0.001" value={Math.round(robotLiveAngle)} readonly />
 								</div>
+							</div>
+							<div class="control-point-mini-box-x current-path">
+								<!-- svelte-ignore a11y-label-has-associated-control -->
+								<label class="cp-x" style="user-select:none;">Current Path:</label>
+								<input class="start-pos-box" type="number" step="0.001" value={currentPathIndex+1} readonly />
+							</div>
+								
 						</div>
 
 						<h2 id="advanced-options" class="section-title" style="user-select:none;">Advanced Options</h2>
