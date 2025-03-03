@@ -4,7 +4,6 @@ var app = (function () {
     'use strict';
 
     function noop() { }
-    const identity = x => x;
     function add_location(element, file, line, column, char) {
         element.__svelte_meta = {
             loc: { file, line, column, char }
@@ -47,9 +46,6 @@ var app = (function () {
         }
         const unsub = store.subscribe(...callbacks);
         return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
-    }
-    function component_subscribe(component, store, callback) {
-        component.$$.on_destroy.push(subscribe(store, callback));
     }
     function set_store_value(store, ret, value) {
         store.set(value);
@@ -145,6 +141,23 @@ var app = (function () {
     let current_component;
     function set_current_component(component) {
         current_component = component;
+    }
+    function get_current_component() {
+        if (!current_component)
+            throw new Error('Function called outside component initialization');
+        return current_component;
+    }
+    /**
+     * The `onMount` function schedules a callback to run as soon as the component has been mounted to the DOM.
+     * It must be called during the component's initialisation (but doesn't need to live *inside* the component;
+     * it can be called from an external module).
+     *
+     * `onMount` does not run inside a [server-side component](/docs#run-time-server-side-component-api).
+     *
+     * https://svelte.dev/docs#run-time-svelte-onmount
+     */
+    function onMount(fn) {
+        get_current_component().$$.on_mount.push(fn);
     }
 
     const dirty_components = [];
@@ -524,6 +537,160 @@ var app = (function () {
         return { set, update, subscribe };
     }
 
+    class Path {
+        constructor(id, controlPoints = [], color = this.getRandomBrightColor(), robotHeading = 'constant') {
+            this.id = id;
+            this.controlPoints = controlPoints;
+            this.color = color;
+            this.robotHeading = robotHeading;
+            this.bezierCurvePoints = this.calculateBezier();
+        }
+
+        getRandomBrightColor() {
+    		const r = Math.floor(Math.random() * 128 + 128);
+    		const g = Math.floor(Math.random() * 128 + 128);
+    		const b = Math.floor(Math.random() * 128 + 128);
+    		return `rgb(${r}, ${g}, ${b})`;
+    	}
+
+        calculateBezier(steps = 100) {
+            if (this.controlPoints.length < 2) return [];
+            let curve = [];
+            for (let t = 0; t <= 1; t += 1 / steps) {
+                curve.push(this.deCasteljau(this.controlPoints, t));
+            }
+            curve.push(this.controlPoints[this.controlPoints.length - 1]);
+            return curve;
+        }
+
+        deCasteljau(points, t) {
+            if (points.length === 1) return points[0];
+            let newPoints = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                let x = (1 - t) * points[i].x + t * points[i + 1].x;
+                let y = (1 - t) * points[i].y + t * points[i + 1].y;
+                newPoints.push({ x, y });
+            }
+            return this.deCasteljau(newPoints, t);
+        }
+
+        addControlPoint(x, y) {
+            this.controlPoints.push({ x, y });
+            this.bezierCurvePoints = this.calculateBezier();
+        }
+
+        updateControlPoint(index, x, y) {
+            if (index >= 0 && index < this.controlPoints.length) {
+                this.controlPoints[index] = { x, y };
+                this.bezierCurvePoints = this.calculateBezier();
+            }
+        }
+
+        setColor(color) {
+            this.color = color;
+        }
+
+        setHeading(robotHeading) {
+            this.robotHeading = robotHeading;
+        }
+    }
+
+    // Compute a point on a Bézier curve using De Casteljau’s algorithm
+    function getPointAt(t, controlPoints) {
+        if (controlPoints.length === 2) {
+            // ✅ Linear interpolation for 2-point paths (NO recursion!)
+            return {
+                x: (1 - t) * controlPoints[0].x + t * controlPoints[1].x,
+                y: (1 - t) * controlPoints[0].y + t * controlPoints[1].y
+            };
+        }
+
+        if (controlPoints.length === 1) {
+            // Edge case: Just return the single point
+            return controlPoints[0];
+        }
+
+        // ✅ De Casteljau's algorithm for 3+ points (NO infinite recursion)
+        let newPoints = [];
+        for (let i = 0; i < controlPoints.length - 1; i++) {
+            let x = (1 - t) * controlPoints[i].x + t * controlPoints[i + 1].x;
+            let y = (1 - t) * controlPoints[i].y + t * controlPoints[i + 1].y;
+            newPoints.push({ x, y });
+        }
+
+        return getPointAt(t, newPoints);
+    }
+
+
+    // Compute the tangent vector (first derivative)
+    function getDerivativeAt(t, controlPoints) {
+        if (controlPoints.length < 2) return { x: 0, y: 0 };
+
+        let derivatives = [];
+        for (let i = 0; i < controlPoints.length - 1; i++) {
+            let x = controlPoints.length * (controlPoints[i + 1].x - controlPoints[i].x);
+            let y = controlPoints.length * (controlPoints[i + 1].y - controlPoints[i].y);
+            derivatives.push({ x, y });
+        }
+
+        return getPointAt(t, derivatives);
+    }
+
+    // Compute the normal vector by rotating the tangent by 90°
+    function getNormalAt(t, controlPoints) {
+        const tangent = getDerivativeAt(t, controlPoints);
+        const length = Math.sqrt(tangent.x ** 2 + tangent.y ** 2);
+        if (length === 0) return { x: 0, y: 0 }; // Prevent division by zero
+        return { x: -tangent.y / length, y: tangent.x / length }; // Rotate by 90 degrees
+    }
+
+    // Compute offset points based on hitbox width
+    function getOffsetPointAt(t, controlPoints, width) {
+        const point = getPointAt(t, controlPoints);
+        const normal = getNormalAt(t, controlPoints);
+
+        return {
+            left: { x: point.x + normal.x * (width / 2), y: point.y + normal.y * (width / 2) },
+            right: { x: point.x - normal.x * (width / 2), y: point.y - normal.y * (width / 2) }
+        };
+    }
+
+    // Generate hitbox paths for any degree Bézier curve
+    function generateHitboxPath(controlPoints, width) {
+        if (controlPoints.length < 2) {
+            console.warn(`⚠️ Skipping hitbox: Not enough control points (${controlPoints.length} found)`);
+            return { leftPath: [], rightPath: [] };
+        }
+
+        const leftPath = [];
+        const rightPath = [];
+
+        // Case 1: Linear Path (2 Points)
+        if (controlPoints.length === 2) {
+            console.log("⚠️ Generating LINEAR hitbox for 2-point path.");
+            for (let t = 0; t <= 1; t += 0.01) {
+                const x = (1 - t) * controlPoints[0].x + t * controlPoints[1].x;
+                const y = (1 - t) * controlPoints[0].y + t * controlPoints[1].y;
+                const normal = getNormalAt(t, controlPoints);
+
+                leftPath.push({ x: x + normal.x * (width / 2), y: y + normal.y * (width / 2) });
+                rightPath.push({ x: x - normal.x * (width / 2), y: y - normal.y * (width / 2) });
+            }
+        }
+        // Case 2: Bézier Curve (3+ Points)
+        else {
+            console.log("✅ Generating Bézier hitbox.");
+            for (let t = 0; t <= 1; t += 0.01) {
+                const offsetPoints = getOffsetPointAt(t, controlPoints, width);
+                leftPath.push(offsetPoints.left);
+                rightPath.push(offsetPoints.right);
+            }
+        }
+
+        console.log("✅ Generated hitbox:", { leftPath, rightPath });
+        return { leftPath, rightPath };
+    }
+
     /* src/App.svelte generated by Svelte v3.59.2 */
 
     const { console: console_1 } = globals;
@@ -531,103 +698,46 @@ var app = (function () {
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[8] = list[i];
-    	child_ctx[90] = list;
-    	child_ctx[91] = i;
+    	child_ctx[10] = list[i];
+    	child_ctx[84] = list;
+    	child_ctx[85] = i;
     	return child_ctx;
     }
 
     function get_each_context_1(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[18] = list[i].x;
-    	child_ctx[19] = list[i].y;
-    	child_ctx[93] = i;
+    	child_ctx[86] = list[i].x;
+    	child_ctx[87] = list[i].y;
+    	child_ctx[89] = i;
     	return child_ctx;
     }
 
     function get_each_context_2(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[8] = list[i];
+    	child_ctx[10] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_3(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[8] = list[i];
+    	child_ctx[10] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_4(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[98] = list[i];
-    	child_ctx[93] = i;
+    	child_ctx[10] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_5(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[8] = list[i];
+    	child_ctx[86] = list[i].x;
+    	child_ctx[87] = list[i].y;
     	return child_ctx;
     }
 
-    function get_each_context_6(ctx, list, i) {
-    	const child_ctx = ctx.slice();
-    	child_ctx[18] = list[i].x;
-    	child_ctx[19] = list[i].y;
-    	return child_ctx;
-    }
-
-    // (1125:8) {#if $paths.length > 0}
-    function create_if_block_15(ctx) {
-    	let input;
-    	let mounted;
-    	let dispose;
-
-    	const block = {
-    		c: function create() {
-    			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-27ngvs");
-    			attr_dev(input, "type", "number");
-    			attr_dev(input, "step", "1");
-    			add_location(input, file, 1125, 8, 28809);
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, input, anchor);
-    			set_input_value(input, /*$paths*/ ctx[7][0].controlPoints[0].x);
-
-    			if (!mounted) {
-    				dispose = [
-    					listen_dev(input, "input", /*input_input_handler*/ ctx[41]),
-    					listen_dev(input, "input", /*input_handler_2*/ ctx[42], false, false, false, false)
-    				];
-
-    				mounted = true;
-    			}
-    		},
-    		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128 && to_number(input.value) !== /*$paths*/ ctx[7][0].controlPoints[0].x) {
-    				set_input_value(input, /*$paths*/ ctx[7][0].controlPoints[0].x);
-    			}
-    		},
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(input);
-    			mounted = false;
-    			run_all(dispose);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_if_block_15.name,
-    		type: "if",
-    		source: "(1125:8) {#if $paths.length > 0}",
-    		ctx
-    	});
-
-    	return block;
-    }
-
-    // (1132:8) {#if $paths.length > 0}
+    // (1068:8) {#if $paths.length > 0}
     function create_if_block_14(ctx) {
     	let input;
     	let mounted;
@@ -636,27 +746,27 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-27ngvs");
+    			attr_dev(input, "class", "start-pos-box svelte-oxdj5w");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "1");
-    			add_location(input, file, 1132, 8, 29296);
+    			add_location(input, file, 1068, 8, 26971);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
-    			set_input_value(input, /*$paths*/ ctx[7][0].controlPoints[0].y);
+    			set_input_value(input, /*$paths*/ ctx[9][0].controlPoints[0].x);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(input, "input", /*input_input_handler_1*/ ctx[43]),
-    					listen_dev(input, "input", /*input_handler_3*/ ctx[44], false, false, false, false)
+    					listen_dev(input, "input", /*input_input_handler*/ ctx[40]),
+    					listen_dev(input, "input", /*input_handler_2*/ ctx[41], false, false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128 && to_number(input.value) !== /*$paths*/ ctx[7][0].controlPoints[0].y) {
-    				set_input_value(input, /*$paths*/ ctx[7][0].controlPoints[0].y);
+    			if (dirty[0] & /*$paths*/ 512 && to_number(input.value) !== /*$paths*/ ctx[9][0].controlPoints[0].x) {
+    				set_input_value(input, /*$paths*/ ctx[9][0].controlPoints[0].x);
     			}
     		},
     		d: function destroy(detaching) {
@@ -670,45 +780,98 @@ var app = (function () {
     		block,
     		id: create_if_block_14.name,
     		type: "if",
-    		source: "(1132:8) {#if $paths.length > 0}",
+    		source: "(1068:8) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1194:5) {#each path.controlPoints as { x, y }}
-    function create_each_block_6(ctx) {
+    // (1075:8) {#if $paths.length > 0}
+    function create_if_block_13(ctx) {
+    	let input;
+    	let mounted;
+    	let dispose;
+
+    	const block = {
+    		c: function create() {
+    			input = element("input");
+    			attr_dev(input, "class", "start-pos-box svelte-oxdj5w");
+    			attr_dev(input, "type", "number");
+    			attr_dev(input, "step", "1");
+    			add_location(input, file, 1075, 8, 27458);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, input, anchor);
+    			set_input_value(input, /*$paths*/ ctx[9][0].controlPoints[0].y);
+
+    			if (!mounted) {
+    				dispose = [
+    					listen_dev(input, "input", /*input_input_handler_1*/ ctx[42]),
+    					listen_dev(input, "input", /*input_handler_3*/ ctx[43], false, false, false, false)
+    				];
+
+    				mounted = true;
+    			}
+    		},
+    		p: function update(ctx, dirty) {
+    			if (dirty[0] & /*$paths*/ 512 && to_number(input.value) !== /*$paths*/ ctx[9][0].controlPoints[0].y) {
+    				set_input_value(input, /*$paths*/ ctx[9][0].controlPoints[0].y);
+    			}
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(input);
+    			mounted = false;
+    			run_all(dispose);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block_13.name,
+    		type: "if",
+    		source: "(1075:8) {#if $paths.length > 0}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (1137:5) {#each path.controlPoints as { x, y }}
+    function create_each_block_5(ctx) {
     	let div1;
     	let div0;
+    	let t;
 
     	const block = {
     		c: function create() {
     			div1 = element("div");
     			div0 = element("div");
-    			attr_dev(div0, "class", "point svelte-27ngvs");
-    			set_style(div0, "left", /*x*/ ctx[18] / 144 * 100 + "%");
-    			set_style(div0, "bottom", /*y*/ ctx[19] / 144 * 100 + "%");
-    			set_style(div0, "background", /*path*/ ctx[8].color);
-    			add_location(div0, file, 1195, 6, 32370);
-    			attr_dev(div1, "class", "hover-point svelte-27ngvs");
-    			add_location(div1, file, 1194, 5, 32338);
+    			t = space();
+    			attr_dev(div0, "class", "point svelte-oxdj5w");
+    			set_style(div0, "left", /*x*/ ctx[86] / 144 * 100 + "%");
+    			set_style(div0, "bottom", /*y*/ ctx[87] / 144 * 100 + "%");
+    			set_style(div0, "background", /*path*/ ctx[10].color);
+    			add_location(div0, file, 1138, 7, 30535);
+    			attr_dev(div1, "class", "hover-point svelte-oxdj5w");
+    			add_location(div1, file, 1137, 6, 30502);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div1, anchor);
     			append_dev(div1, div0);
+    			append_dev(div1, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(div0, "left", /*x*/ ctx[18] / 144 * 100 + "%");
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(div0, "left", /*x*/ ctx[86] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(div0, "bottom", /*y*/ ctx[19] / 144 * 100 + "%");
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(div0, "bottom", /*y*/ ctx[87] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(div0, "background", /*path*/ ctx[8].color);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(div0, "background", /*path*/ ctx[10].color);
     			}
     		},
     		d: function destroy(detaching) {
@@ -718,24 +881,24 @@ var app = (function () {
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_each_block_6.name,
+    		id: create_each_block_5.name,
     		type: "each",
-    		source: "(1194:5) {#each path.controlPoints as { x, y }}",
+    		source: "(1137:5) {#each path.controlPoints as { x, y }}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1193:4) {#each $paths as path}
-    function create_each_block_5(ctx) {
+    // (1136:4) {#each $paths as path}
+    function create_each_block_4(ctx) {
     	let each_1_anchor;
-    	let each_value_6 = /*path*/ ctx[8].controlPoints;
-    	validate_each_argument(each_value_6);
+    	let each_value_5 = /*path*/ ctx[10].controlPoints;
+    	validate_each_argument(each_value_5);
     	let each_blocks = [];
 
-    	for (let i = 0; i < each_value_6.length; i += 1) {
-    		each_blocks[i] = create_each_block_6(get_each_context_6(ctx, each_value_6, i));
+    	for (let i = 0; i < each_value_5.length; i += 1) {
+    		each_blocks[i] = create_each_block_5(get_each_context_5(ctx, each_value_5, i));
     	}
 
     	const block = {
@@ -756,18 +919,18 @@ var app = (function () {
     			insert_dev(target, each_1_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128) {
-    				each_value_6 = /*path*/ ctx[8].controlPoints;
-    				validate_each_argument(each_value_6);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				each_value_5 = /*path*/ ctx[10].controlPoints;
+    				validate_each_argument(each_value_5);
     				let i;
 
-    				for (i = 0; i < each_value_6.length; i += 1) {
-    					const child_ctx = get_each_context_6(ctx, each_value_6, i);
+    				for (i = 0; i < each_value_5.length; i += 1) {
+    					const child_ctx = get_each_context_5(ctx, each_value_5, i);
 
     					if (each_blocks[i]) {
     						each_blocks[i].p(child_ctx, dirty);
     					} else {
-    						each_blocks[i] = create_each_block_6(child_ctx);
+    						each_blocks[i] = create_each_block_5(child_ctx);
     						each_blocks[i].c();
     						each_blocks[i].m(each_1_anchor.parentNode, each_1_anchor);
     					}
@@ -777,7 +940,7 @@ var app = (function () {
     					each_blocks[i].d(1);
     				}
 
-    				each_blocks.length = each_value_6.length;
+    				each_blocks.length = each_value_5.length;
     			}
     		},
     		d: function destroy(detaching) {
@@ -788,17 +951,17 @@ var app = (function () {
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_each_block_5.name,
+    		id: create_each_block_4.name,
     		type: "each",
-    		source: "(1193:4) {#each $paths as path}",
+    		source: "(1136:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1202:4) {#if $paths.length > 0}
-    function create_if_block_13(ctx) {
+    // (1145:4) {#if $paths.length > 0}
+    function create_if_block_12(ctx) {
     	let img;
     	let img_src_value;
 
@@ -808,32 +971,33 @@ var app = (function () {
     			if (!src_url_equal(img.src, img_src_value = "./assets/robot.png")) attr_dev(img, "src", img_src_value);
     			attr_dev(img, "alt", "Robot");
     			attr_dev(img, "id", "robot");
-    			set_style(img, "width", /*robotWidth*/ ctx[1] / 144 * 100 + "%");
-    			set_style(img, "height", /*robotLength*/ ctx[0] / 144 * 100 + "%");
-    			set_style(img, "left", /*robotX*/ ctx[9] / 144 * 100 + "%");
-    			set_style(img, "bottom", /*robotY*/ ctx[10] / 144 * 100 + "%");
+    			set_style(img, "width", /*robotWidth*/ ctx[3] / 144 * 100 + "%");
+    			set_style(img, "height", /*robotLength*/ ctx[2] / 144 * 100 + "%");
+    			set_style(img, "left", /*robotX*/ ctx[11] / 144 * 100 + "%");
+    			set_style(img, "bottom", /*robotY*/ ctx[12] / 144 * 100 + "%");
     			set_style(img, "user-select", "none");
-    			attr_dev(img, "class", "svelte-27ngvs");
-    			add_location(img, file, 1202, 5, 32556);
+    			set_style(img, "position", "absolute");
+    			attr_dev(img, "class", "svelte-oxdj5w");
+    			add_location(img, file, 1145, 5, 30753);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, img, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*robotWidth*/ 2) {
-    				set_style(img, "width", /*robotWidth*/ ctx[1] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotWidth*/ 8) {
+    				set_style(img, "width", /*robotWidth*/ ctx[3] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotLength*/ 1) {
-    				set_style(img, "height", /*robotLength*/ ctx[0] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotLength*/ 4) {
+    				set_style(img, "height", /*robotLength*/ ctx[2] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotX*/ 512) {
-    				set_style(img, "left", /*robotX*/ ctx[9] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotX*/ 2048) {
+    				set_style(img, "left", /*robotX*/ ctx[11] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotY*/ 1024) {
-    				set_style(img, "bottom", /*robotY*/ ctx[10] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotY*/ 4096) {
+    				set_style(img, "bottom", /*robotY*/ ctx[12] / 144 * 100 + "%");
     			}
     		},
     		d: function destroy(detaching) {
@@ -843,19 +1007,19 @@ var app = (function () {
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_if_block_13.name,
+    		id: create_if_block_12.name,
     		type: "if",
-    		source: "(1202:4) {#if $paths.length > 0}",
+    		source: "(1145:4) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1206:4) {#if shouldShowHitbox}
-    function create_if_block_9(ctx) {
-    	let svg;
-    	let each_value_3 = /*offsetPaths*/ ctx[6];
+    // (1162:5) {#if $shouldShowHitbox}
+    function create_if_block_10(ctx) {
+    	let each_1_anchor;
+    	let each_value_3 = /*offsetPaths*/ ctx[8];
     	validate_each_argument(each_value_3);
     	let each_blocks = [];
 
@@ -865,33 +1029,24 @@ var app = (function () {
 
     	const block = {
     		c: function create() {
-    			svg = svg_element("svg");
-
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].c();
     			}
 
-    			attr_dev(svg, "viewBox", "0 0 144 144");
-    			attr_dev(svg, "width", "100%");
-    			attr_dev(svg, "height", "100%");
-    			set_style(svg, "position", "absolute");
-    			set_style(svg, "top", "0");
-    			set_style(svg, "left", "0");
-    			attr_dev(svg, "class", "svelte-27ngvs");
-    			add_location(svg, file, 1206, 5, 32816);
+    			each_1_anchor = empty();
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, svg, anchor);
-
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				if (each_blocks[i]) {
-    					each_blocks[i].m(svg, null);
+    					each_blocks[i].m(target, anchor);
     				}
     			}
+
+    			insert_dev(target, each_1_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 64) {
-    				each_value_3 = /*offsetPaths*/ ctx[6];
+    			if (dirty[0] & /*offsetPaths*/ 256) {
+    				each_value_3 = /*offsetPaths*/ ctx[8];
     				validate_each_argument(each_value_3);
     				let i;
 
@@ -903,7 +1058,7 @@ var app = (function () {
     					} else {
     						each_blocks[i] = create_each_block_3(child_ctx);
     						each_blocks[i].c();
-    						each_blocks[i].m(svg, null);
+    						each_blocks[i].m(each_1_anchor.parentNode, each_1_anchor);
     					}
     				}
 
@@ -915,107 +1070,8 @@ var app = (function () {
     			}
     		},
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(svg);
     			destroy_each(each_blocks, detaching);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_if_block_9.name,
-    		type: "if",
-    		source: "(1206:4) {#if shouldShowHitbox}",
-    		ctx
-    	});
-
-    	return block;
-    }
-
-    // (1210:8) {#if i < path.main.length - 1}
-    function create_if_block_10(ctx) {
-    	let line;
-    	let line_x__value;
-    	let line_y__value;
-    	let line_x__value_1;
-    	let line_y__value_1;
-    	let if_block0_anchor;
-    	let if_block1_anchor;
-    	let if_block0 = /*path*/ ctx[8].left[/*i*/ ctx[93]] && /*path*/ ctx[8].left[/*i*/ ctx[93] + 1] && create_if_block_12(ctx);
-    	let if_block1 = /*path*/ ctx[8].right[/*i*/ ctx[93]] && /*path*/ ctx[8].right[/*i*/ ctx[93] + 1] && create_if_block_11(ctx);
-
-    	const block = {
-    		c: function create() {
-    			line = svg_element("line");
-    			if (if_block0) if_block0.c();
-    			if_block0_anchor = empty();
-    			if (if_block1) if_block1.c();
-    			if_block1_anchor = empty();
-    			attr_dev(line, "x1", line_x__value = /*point*/ ctx[98].x);
-    			attr_dev(line, "y1", line_y__value = 144 - /*point*/ ctx[98].y);
-    			attr_dev(line, "x2", line_x__value_1 = /*path*/ ctx[8].main[/*i*/ ctx[93] + 1].x);
-    			attr_dev(line, "y2", line_y__value_1 = 144 - /*path*/ ctx[8].main[/*i*/ ctx[93] + 1].y);
-    			attr_dev(line, "stroke", "white");
-    			attr_dev(line, "opacity", "0.3");
-    			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-27ngvs");
-    			add_location(line, file, 1211, 9, 33069);
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, line, anchor);
-    			if (if_block0) if_block0.m(target, anchor);
-    			insert_dev(target, if_block0_anchor, anchor);
-    			if (if_block1) if_block1.m(target, anchor);
-    			insert_dev(target, if_block1_anchor, anchor);
-    		},
-    		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value !== (line_x__value = /*point*/ ctx[98].x)) {
-    				attr_dev(line, "x1", line_x__value);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value !== (line_y__value = 144 - /*point*/ ctx[98].y)) {
-    				attr_dev(line, "y1", line_y__value);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value_1 !== (line_x__value_1 = /*path*/ ctx[8].main[/*i*/ ctx[93] + 1].x)) {
-    				attr_dev(line, "x2", line_x__value_1);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value_1 !== (line_y__value_1 = 144 - /*path*/ ctx[8].main[/*i*/ ctx[93] + 1].y)) {
-    				attr_dev(line, "y2", line_y__value_1);
-    			}
-
-    			if (/*path*/ ctx[8].left[/*i*/ ctx[93]] && /*path*/ ctx[8].left[/*i*/ ctx[93] + 1]) {
-    				if (if_block0) {
-    					if_block0.p(ctx, dirty);
-    				} else {
-    					if_block0 = create_if_block_12(ctx);
-    					if_block0.c();
-    					if_block0.m(if_block0_anchor.parentNode, if_block0_anchor);
-    				}
-    			} else if (if_block0) {
-    				if_block0.d(1);
-    				if_block0 = null;
-    			}
-
-    			if (/*path*/ ctx[8].right[/*i*/ ctx[93]] && /*path*/ ctx[8].right[/*i*/ ctx[93] + 1]) {
-    				if (if_block1) {
-    					if_block1.p(ctx, dirty);
-    				} else {
-    					if_block1 = create_if_block_11(ctx);
-    					if_block1.c();
-    					if_block1.m(if_block1_anchor.parentNode, if_block1_anchor);
-    				}
-    			} else if (if_block1) {
-    				if_block1.d(1);
-    				if_block1 = null;
-    			}
-    		},
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(line);
-    			if (if_block0) if_block0.d(detaching);
-    			if (detaching) detach_dev(if_block0_anchor);
-    			if (if_block1) if_block1.d(detaching);
-    			if (detaching) detach_dev(if_block1_anchor);
+    			if (detaching) detach_dev(each_1_anchor);
     		}
     	};
 
@@ -1023,113 +1079,79 @@ var app = (function () {
     		block,
     		id: create_if_block_10.name,
     		type: "if",
-    		source: "(1210:8) {#if i < path.main.length - 1}",
+    		source: "(1162:5) {#if $shouldShowHitbox}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1222:9) {#if path.left[i] && path.left[i + 1]}
-    function create_if_block_12(ctx) {
-    	let line;
-    	let line_x__value;
-    	let line_y__value;
-    	let line_x__value_1;
-    	let line_y__value_1;
-
-    	const block = {
-    		c: function create() {
-    			line = svg_element("line");
-    			attr_dev(line, "x1", line_x__value = /*path*/ ctx[8].left[/*i*/ ctx[93]].x);
-    			attr_dev(line, "y1", line_y__value = 144 - /*path*/ ctx[8].left[/*i*/ ctx[93]].y);
-    			attr_dev(line, "x2", line_x__value_1 = /*path*/ ctx[8].left[/*i*/ ctx[93] + 1].x);
-    			attr_dev(line, "y2", line_y__value_1 = 144 - /*path*/ ctx[8].left[/*i*/ ctx[93] + 1].y);
-    			attr_dev(line, "stroke", "white");
-    			attr_dev(line, "opacity", "0.3");
-    			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-27ngvs");
-    			add_location(line, file, 1222, 10, 33403);
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, line, anchor);
-    		},
-    		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value !== (line_x__value = /*path*/ ctx[8].left[/*i*/ ctx[93]].x)) {
-    				attr_dev(line, "x1", line_x__value);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value !== (line_y__value = 144 - /*path*/ ctx[8].left[/*i*/ ctx[93]].y)) {
-    				attr_dev(line, "y1", line_y__value);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value_1 !== (line_x__value_1 = /*path*/ ctx[8].left[/*i*/ ctx[93] + 1].x)) {
-    				attr_dev(line, "x2", line_x__value_1);
-    			}
-
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value_1 !== (line_y__value_1 = 144 - /*path*/ ctx[8].left[/*i*/ ctx[93] + 1].y)) {
-    				attr_dev(line, "y2", line_y__value_1);
-    			}
-    		},
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(line);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_if_block_12.name,
-    		type: "if",
-    		source: "(1222:9) {#if path.left[i] && path.left[i + 1]}",
-    		ctx
-    	});
-
-    	return block;
-    }
-
-    // (1233:9) {#if path.right[i] && path.right[i + 1]}
+    // (1164:7) {#if path.left.length > 0 && path.right.length > 0}
     function create_if_block_11(ctx) {
-    	let line;
-    	let line_x__value;
-    	let line_y__value;
-    	let line_x__value_1;
-    	let line_y__value_1;
+    	let polygon;
+    	let polygon_points_value;
+    	let path0;
+    	let path0_d_value;
+    	let path0_stroke_value;
+    	let path1;
+    	let path1_d_value;
+    	let path1_stroke_value;
 
     	const block = {
     		c: function create() {
-    			line = svg_element("line");
-    			attr_dev(line, "x1", line_x__value = /*path*/ ctx[8].right[/*i*/ ctx[93]].x);
-    			attr_dev(line, "y1", line_y__value = 144 - /*path*/ ctx[8].right[/*i*/ ctx[93]].y);
-    			attr_dev(line, "x2", line_x__value_1 = /*path*/ ctx[8].right[/*i*/ ctx[93] + 1].x);
-    			attr_dev(line, "y2", line_y__value_1 = 144 - /*path*/ ctx[8].right[/*i*/ ctx[93] + 1].y);
-    			attr_dev(line, "stroke", "white");
-    			attr_dev(line, "opacity", "0.3");
-    			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-27ngvs");
-    			add_location(line, file, 1233, 10, 33728);
+    			polygon = svg_element("polygon");
+    			path0 = svg_element("path");
+    			path1 = svg_element("path");
+    			attr_dev(polygon, "points", polygon_points_value = /*path*/ ctx[10].left.map(func).join(' ') + ' ' + /*path*/ ctx[10].right.reverse().map(func_1).join(' '));
+    			attr_dev(polygon, "fill", "rgba(255, 255, 255, 0.2)");
+    			attr_dev(polygon, "stroke", "none");
+    			attr_dev(polygon, "class", "svelte-oxdj5w");
+    			add_location(polygon, file, 1164, 8, 31350);
+    			attr_dev(path0, "d", path0_d_value = "M " + /*path*/ ctx[10].left.map(func_2).join(' '));
+    			attr_dev(path0, "stroke", path0_stroke_value = /*path*/ ctx[10].color);
+    			attr_dev(path0, "fill", "none");
+    			attr_dev(path0, "stroke-width", "1");
+    			attr_dev(path0, "opacity", "0.4");
+    			attr_dev(path0, "class", "svelte-oxdj5w");
+    			add_location(path0, file, 1172, 8, 31617);
+    			attr_dev(path1, "d", path1_d_value = "M " + /*path*/ ctx[10].right.map(func_3).join(' '));
+    			attr_dev(path1, "stroke", path1_stroke_value = /*path*/ ctx[10].color);
+    			attr_dev(path1, "fill", "none");
+    			attr_dev(path1, "stroke-width", "1");
+    			attr_dev(path1, "opacity", "0.4");
+    			attr_dev(path1, "class", "svelte-oxdj5w");
+    			add_location(path1, file, 1174, 8, 31766);
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, line, anchor);
+    			insert_dev(target, polygon, anchor);
+    			insert_dev(target, path0, anchor);
+    			insert_dev(target, path1, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value !== (line_x__value = /*path*/ ctx[8].right[/*i*/ ctx[93]].x)) {
-    				attr_dev(line, "x1", line_x__value);
+    			if (dirty[0] & /*offsetPaths*/ 256 && polygon_points_value !== (polygon_points_value = /*path*/ ctx[10].left.map(func).join(' ') + ' ' + /*path*/ ctx[10].right.reverse().map(func_1).join(' '))) {
+    				attr_dev(polygon, "points", polygon_points_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value !== (line_y__value = 144 - /*path*/ ctx[8].right[/*i*/ ctx[93]].y)) {
-    				attr_dev(line, "y1", line_y__value);
+    			if (dirty[0] & /*offsetPaths*/ 256 && path0_d_value !== (path0_d_value = "M " + /*path*/ ctx[10].left.map(func_2).join(' '))) {
+    				attr_dev(path0, "d", path0_d_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_x__value_1 !== (line_x__value_1 = /*path*/ ctx[8].right[/*i*/ ctx[93] + 1].x)) {
-    				attr_dev(line, "x2", line_x__value_1);
+    			if (dirty[0] & /*offsetPaths*/ 256 && path0_stroke_value !== (path0_stroke_value = /*path*/ ctx[10].color)) {
+    				attr_dev(path0, "stroke", path0_stroke_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 64 && line_y__value_1 !== (line_y__value_1 = 144 - /*path*/ ctx[8].right[/*i*/ ctx[93] + 1].y)) {
-    				attr_dev(line, "y2", line_y__value_1);
+    			if (dirty[0] & /*offsetPaths*/ 256 && path1_d_value !== (path1_d_value = "M " + /*path*/ ctx[10].right.map(func_3).join(' '))) {
+    				attr_dev(path1, "d", path1_d_value);
+    			}
+
+    			if (dirty[0] & /*offsetPaths*/ 256 && path1_stroke_value !== (path1_stroke_value = /*path*/ ctx[10].color)) {
+    				attr_dev(path1, "stroke", path1_stroke_value);
     			}
     		},
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(line);
+    			if (detaching) detach_dev(polygon);
+    			if (detaching) detach_dev(path0);
+    			if (detaching) detach_dev(path1);
     		}
     	};
 
@@ -1137,17 +1159,17 @@ var app = (function () {
     		block,
     		id: create_if_block_11.name,
     		type: "if",
-    		source: "(1233:9) {#if path.right[i] && path.right[i + 1]}",
+    		source: "(1164:7) {#if path.left.length > 0 && path.right.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1209:7) {#each path.main as point, i}
-    function create_each_block_4(ctx) {
+    // (1163:6) {#each offsetPaths as path}
+    function create_each_block_3(ctx) {
     	let if_block_anchor;
-    	let if_block = /*i*/ ctx[93] < /*path*/ ctx[8].main.length - 1 && create_if_block_10(ctx);
+    	let if_block = /*path*/ ctx[10].left.length > 0 && /*path*/ ctx[10].right.length > 0 && create_if_block_11(ctx);
 
     	const block = {
     		c: function create() {
@@ -1159,11 +1181,11 @@ var app = (function () {
     			insert_dev(target, if_block_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (/*i*/ ctx[93] < /*path*/ ctx[8].main.length - 1) {
+    			if (/*path*/ ctx[10].left.length > 0 && /*path*/ ctx[10].right.length > 0) {
     				if (if_block) {
     					if_block.p(ctx, dirty);
     				} else {
-    					if_block = create_if_block_10(ctx);
+    					if_block = create_if_block_11(ctx);
     					if_block.c();
     					if_block.m(if_block_anchor.parentNode, if_block_anchor);
     				}
@@ -1180,112 +1202,90 @@ var app = (function () {
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_each_block_4.name,
+    		id: create_each_block_3.name,
     		type: "each",
-    		source: "(1209:7) {#each path.main as point, i}",
+    		source: "(1163:6) {#each offsetPaths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1208:6) {#each offsetPaths as path}
-    function create_each_block_3(ctx) {
-    	let each_1_anchor;
-    	let each_value_4 = /*path*/ ctx[8].main;
-    	validate_each_argument(each_value_4);
-    	let each_blocks = [];
-
-    	for (let i = 0; i < each_value_4.length; i += 1) {
-    		each_blocks[i] = create_each_block_4(get_each_context_4(ctx, each_value_4, i));
-    	}
+    // (1183:6) {#if path.main.length > 0}
+    function create_if_block_9(ctx) {
+    	let path_1;
+    	let path_1_d_value;
+    	let path_1_stroke_value;
 
     	const block = {
     		c: function create() {
-    			for (let i = 0; i < each_blocks.length; i += 1) {
-    				each_blocks[i].c();
-    			}
-
-    			each_1_anchor = empty();
+    			path_1 = svg_element("path");
+    			attr_dev(path_1, "d", path_1_d_value = "M " + /*path*/ ctx[10].main.map(func_4).join(' '));
+    			attr_dev(path_1, "stroke", path_1_stroke_value = /*path*/ ctx[10].color);
+    			attr_dev(path_1, "fill", "none");
+    			attr_dev(path_1, "stroke-width", "1");
+    			attr_dev(path_1, "class", "svelte-oxdj5w");
+    			add_location(path_1, file, 1183, 7, 32056);
     		},
     		m: function mount(target, anchor) {
-    			for (let i = 0; i < each_blocks.length; i += 1) {
-    				if (each_blocks[i]) {
-    					each_blocks[i].m(target, anchor);
-    				}
-    			}
-
-    			insert_dev(target, each_1_anchor, anchor);
+    			insert_dev(target, path_1, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 64) {
-    				each_value_4 = /*path*/ ctx[8].main;
-    				validate_each_argument(each_value_4);
-    				let i;
+    			if (dirty[0] & /*offsetPaths*/ 256 && path_1_d_value !== (path_1_d_value = "M " + /*path*/ ctx[10].main.map(func_4).join(' '))) {
+    				attr_dev(path_1, "d", path_1_d_value);
+    			}
 
-    				for (i = 0; i < each_value_4.length; i += 1) {
-    					const child_ctx = get_each_context_4(ctx, each_value_4, i);
-
-    					if (each_blocks[i]) {
-    						each_blocks[i].p(child_ctx, dirty);
-    					} else {
-    						each_blocks[i] = create_each_block_4(child_ctx);
-    						each_blocks[i].c();
-    						each_blocks[i].m(each_1_anchor.parentNode, each_1_anchor);
-    					}
-    				}
-
-    				for (; i < each_blocks.length; i += 1) {
-    					each_blocks[i].d(1);
-    				}
-
-    				each_blocks.length = each_value_4.length;
+    			if (dirty[0] & /*offsetPaths*/ 256 && path_1_stroke_value !== (path_1_stroke_value = /*path*/ ctx[10].color)) {
+    				attr_dev(path_1, "stroke", path_1_stroke_value);
     			}
     		},
     		d: function destroy(detaching) {
-    			destroy_each(each_blocks, detaching);
-    			if (detaching) detach_dev(each_1_anchor);
+    			if (detaching) detach_dev(path_1);
     		}
     	};
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_each_block_3.name,
-    		type: "each",
-    		source: "(1208:6) {#each offsetPaths as path}",
+    		id: create_if_block_9.name,
+    		type: "if",
+    		source: "(1183:6) {#if path.main.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1252:5) {#each $paths as path}
+    // (1182:5) {#each offsetPaths as path}
     function create_each_block_2(ctx) {
-    	let polyline;
-    	let polyline_points_value;
+    	let if_block_anchor;
+    	let if_block = /*path*/ ctx[10].main.length > 0 && create_if_block_9(ctx);
 
     	const block = {
     		c: function create() {
-    			polyline = svg_element("polyline");
-    			attr_dev(polyline, "class", "curve svelte-27ngvs");
-    			attr_dev(polyline, "points", polyline_points_value = /*path*/ ctx[8].bezierCurvePoints.map(func).join(' '));
-    			set_style(polyline, "stroke", /*path*/ ctx[8].color);
-    			add_location(polyline, file, 1252, 6, 34177);
+    			if (if_block) if_block.c();
+    			if_block_anchor = empty();
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, polyline, anchor);
+    			if (if_block) if_block.m(target, anchor);
+    			insert_dev(target, if_block_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128 && polyline_points_value !== (polyline_points_value = /*path*/ ctx[8].bezierCurvePoints.map(func).join(' '))) {
-    				attr_dev(polyline, "points", polyline_points_value);
-    			}
-
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(polyline, "stroke", /*path*/ ctx[8].color);
+    			if (/*path*/ ctx[10].main.length > 0) {
+    				if (if_block) {
+    					if_block.p(ctx, dirty);
+    				} else {
+    					if_block = create_if_block_9(ctx);
+    					if_block.c();
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				}
+    			} else if (if_block) {
+    				if_block.d(1);
+    				if_block = null;
     			}
     		},
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(polyline);
+    			if (if_block) if_block.d(detaching);
+    			if (detaching) detach_dev(if_block_anchor);
     		}
     	};
 
@@ -1293,14 +1293,14 @@ var app = (function () {
     		block,
     		id: create_each_block_2.name,
     		type: "each",
-    		source: "(1252:5) {#each $paths as path}",
+    		source: "(1182:5) {#each offsetPaths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1295:62) 
+    // (1223:62) 
     function create_if_block_8(ctx) {
     	let label;
     	let t0;
@@ -1312,12 +1312,12 @@ var app = (function () {
     		c: function create() {
     			label = element("label");
     			t0 = text("Control Point ");
-    			t1 = text(/*i*/ ctx[93]);
+    			t1 = text(/*i*/ ctx[89]);
     			t2 = text(":");
-    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
+    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-27ngvs");
-    			add_location(label, file, 1295, 11, 38152);
+    			attr_dev(label, "class", "svelte-oxdj5w");
+    			add_location(label, file, 1223, 11, 36003);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -1326,7 +1326,7 @@ var app = (function () {
     			append_dev(label, t2);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93])) {
+    			if (dirty[0] & /*$paths*/ 512 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89])) {
     				attr_dev(label, "for", label_for_value);
     			}
     		},
@@ -1339,14 +1339,14 @@ var app = (function () {
     		block,
     		id: create_if_block_8.name,
     		type: "if",
-    		source: "(1295:62) ",
+    		source: "(1223:62) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1293:10) {#if (i == 0)}
+    // (1221:10) {#if (i == 0)}
     function create_if_block_7(ctx) {
     	let label;
     	let t;
@@ -1356,17 +1356,17 @@ var app = (function () {
     		c: function create() {
     			label = element("label");
     			t = text("Endpoint:");
-    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
+    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-27ngvs");
-    			add_location(label, file, 1293, 11, 37993);
+    			attr_dev(label, "class", "svelte-oxdj5w");
+    			add_location(label, file, 1221, 11, 35844);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
     			append_dev(label, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 128 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93])) {
+    			if (dirty[0] & /*$paths*/ 512 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89])) {
     				attr_dev(label, "for", label_for_value);
     			}
     		},
@@ -1379,14 +1379,14 @@ var app = (function () {
     		block,
     		id: create_if_block_7.name,
     		type: "if",
-    		source: "(1293:10) {#if (i == 0)}",
+    		source: "(1221:10) {#if (i == 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1319:27) 
+    // (1247:27) 
     function create_if_block_3(ctx) {
     	let div2;
     	let div0;
@@ -1416,25 +1416,25 @@ var app = (function () {
     	let dispose;
 
     	function input_handler_7(...args) {
-    		return /*input_handler_7*/ ctx[61](/*path*/ ctx[8], /*each_value*/ ctx[90], /*path_index*/ ctx[91], ...args);
+    		return /*input_handler_7*/ ctx[60](/*path*/ ctx[10], /*each_value*/ ctx[84], /*path_index*/ ctx[85], ...args);
     	}
 
     	function input_handler_8(...args) {
-    		return /*input_handler_8*/ ctx[62](/*path*/ ctx[8], /*each_value*/ ctx[90], /*path_index*/ ctx[91], ...args);
+    		return /*input_handler_8*/ ctx[61](/*path*/ ctx[10], /*each_value*/ ctx[84], /*path_index*/ ctx[85], ...args);
     	}
 
     	function select_change_handler() {
-    		/*select_change_handler*/ ctx[63].call(select, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*select_change_handler*/ ctx[62].call(select, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	function change_handler() {
-    		return /*change_handler*/ ctx[64](/*path*/ ctx[8]);
+    		return /*change_handler*/ ctx[63](/*path*/ ctx[10]);
     	}
 
     	function select_block_type_2(ctx, dirty) {
-    		if (/*path*/ ctx[8].robotHeading === 'linear') return create_if_block_4;
-    		if (/*path*/ ctx[8].robotHeading === 'tangential') return create_if_block_5;
-    		if (/*path*/ ctx[8].robotHeading === 'constant') return create_if_block_6;
+    		if (/*path*/ ctx[10].robotHeading === 'linear') return create_if_block_4;
+    		if (/*path*/ ctx[10].robotHeading === 'tangential') return create_if_block_5;
+    		if (/*path*/ ctx[10].robotHeading === 'constant') return create_if_block_6;
     	}
 
     	let current_block_type = select_block_type_2(ctx);
@@ -1464,48 +1464,48 @@ var app = (function () {
     			option2.textContent = "Linear";
     			t9 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-27ngvs");
-    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
+    			attr_dev(label0, "class", "cp-x svelte-oxdj5w");
+    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1321, 12, 40053);
-    			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
-    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
+    			add_location(label0, file, 1249, 12, 37904);
+    			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89]);
+    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			input0.value = input0_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].x;
-    			add_location(input0, file, 1322, 12, 40156);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-27ngvs");
-    			add_location(div0, file, 1320, 11, 40002);
-    			attr_dev(label1, "class", "cp-y svelte-27ngvs");
-    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
+    			input0.value = input0_value_value = /*path*/ ctx[10].controlPoints[/*path*/ ctx[10].controlPoints.length - 1].x;
+    			add_location(input0, file, 1250, 12, 38007);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-oxdj5w");
+    			add_location(div0, file, 1248, 11, 37853);
+    			attr_dev(label1, "class", "cp-y svelte-oxdj5w");
+    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1325, 12, 40538);
-    			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
-    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
+    			add_location(label1, file, 1253, 12, 38389);
+    			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y");
+    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			input1.value = input1_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].y;
-    			add_location(input1, file, 1326, 12, 40643);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-27ngvs");
-    			add_location(div1, file, 1324, 11, 40487);
+    			input1.value = input1_value_value = /*path*/ ctx[10].controlPoints[/*path*/ ctx[10].controlPoints.length - 1].y;
+    			add_location(input1, file, 1254, 12, 38494);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-oxdj5w");
+    			add_location(div1, file, 1252, 11, 38338);
     			option0.__value = "constant";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-27ngvs");
-    			add_location(option0, file, 1330, 12, 41189);
+    			attr_dev(option0, "class", "svelte-oxdj5w");
+    			add_location(option0, file, 1258, 12, 39040);
     			option1.__value = "tangential";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-27ngvs");
-    			add_location(option1, file, 1331, 12, 41244);
+    			attr_dev(option1, "class", "svelte-oxdj5w");
+    			add_location(option1, file, 1259, 12, 39095);
     			option2.__value = "linear";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-27ngvs");
-    			add_location(option2, file, 1332, 12, 41303);
+    			attr_dev(option2, "class", "svelte-oxdj5w");
+    			add_location(option2, file, 1260, 12, 39154);
     			attr_dev(select, "id", "robot-heading");
-    			attr_dev(select, "class", "standard-input-box svelte-27ngvs");
-    			if (/*path*/ ctx[8].robotHeading === void 0) add_render_callback(select_change_handler);
-    			add_location(select, file, 1329, 11, 41044);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div2, file, 1319, 10, 39954);
+    			attr_dev(select, "class", "standard-input-box svelte-oxdj5w");
+    			if (/*path*/ ctx[10].robotHeading === void 0) add_render_callback(select_change_handler);
+    			add_location(select, file, 1257, 11, 38895);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div2, file, 1247, 10, 37805);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1525,7 +1525,7 @@ var app = (function () {
     			append_dev(select, option0);
     			append_dev(select, option1);
     			append_dev(select, option2);
-    			select_option(select, /*path*/ ctx[8].robotHeading, true);
+    			select_option(select, /*path*/ ctx[10].robotHeading, true);
     			append_dev(div2, t9);
     			if (if_block) if_block.m(div2, null);
 
@@ -1543,32 +1543,32 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93])) {
+    			if (dirty[0] & /*$paths*/ 512 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89])) {
     				attr_dev(label0, "for", label0_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input0_id_value !== (input0_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93])) {
+    			if (dirty[0] & /*$paths*/ 512 && input0_id_value !== (input0_id_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89])) {
     				attr_dev(input0, "id", input0_id_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input0_value_value !== (input0_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].x) && input0.value !== input0_value_value) {
+    			if (dirty[0] & /*$paths*/ 512 && input0_value_value !== (input0_value_value = /*path*/ ctx[10].controlPoints[/*path*/ ctx[10].controlPoints.length - 1].x) && input0.value !== input0_value_value) {
     				prop_dev(input0, "value", input0_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 512 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y")) {
     				attr_dev(label1, "for", label1_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input1_id_value !== (input1_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 512 && input1_id_value !== (input1_id_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y")) {
     				attr_dev(input1, "id", input1_id_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input1_value_value !== (input1_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].y) && input1.value !== input1_value_value) {
+    			if (dirty[0] & /*$paths*/ 512 && input1_value_value !== (input1_value_value = /*path*/ ctx[10].controlPoints[/*path*/ ctx[10].controlPoints.length - 1].y) && input1.value !== input1_value_value) {
     				prop_dev(input1, "value", input1_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				select_option(select, /*path*/ ctx[8].robotHeading);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				select_option(select, /*path*/ ctx[10].robotHeading);
     			}
 
     			if (current_block_type === (current_block_type = select_block_type_2(ctx)) && if_block) {
@@ -1599,14 +1599,14 @@ var app = (function () {
     		block,
     		id: create_if_block_3.name,
     		type: "if",
-    		source: "(1319:27) ",
+    		source: "(1247:27) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1298:10) {#if i > 0 && i!=path.controlPoints.length-1}
+    // (1226:10) {#if i > 0 && i!=path.controlPoints.length-1}
     function create_if_block_1(ctx) {
     	let div2;
     	let div0;
@@ -1629,14 +1629,14 @@ var app = (function () {
     	let dispose;
 
     	function input_handler_5(...args) {
-    		return /*input_handler_5*/ ctx[58](/*path*/ ctx[8], /*i*/ ctx[93], /*each_value*/ ctx[90], /*path_index*/ ctx[91], ...args);
+    		return /*input_handler_5*/ ctx[57](/*path*/ ctx[10], /*i*/ ctx[89], /*each_value*/ ctx[84], /*path_index*/ ctx[85], ...args);
     	}
 
     	function input_handler_6(...args) {
-    		return /*input_handler_6*/ ctx[59](/*path*/ ctx[8], /*i*/ ctx[93], /*each_value*/ ctx[90], /*path_index*/ ctx[91], ...args);
+    		return /*input_handler_6*/ ctx[58](/*path*/ ctx[10], /*i*/ ctx[89], /*each_value*/ ctx[84], /*path_index*/ ctx[85], ...args);
     	}
 
-    	let if_block = /*i*/ ctx[93] > 0 && create_if_block_2(ctx);
+    	let if_block = /*i*/ ctx[89] > 0 && create_if_block_2(ctx);
 
     	const block = {
     		c: function create() {
@@ -1654,32 +1654,32 @@ var app = (function () {
     			input1 = element("input");
     			t5 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-27ngvs");
-    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
+    			attr_dev(label0, "class", "cp-x svelte-oxdj5w");
+    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1300, 13, 38430);
+    			add_location(label0, file, 1228, 13, 36281);
     			attr_dev(input0, "id", "cp-input");
-    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			input0.value = input0_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].x;
-    			add_location(input0, file, 1301, 13, 38534);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-27ngvs");
-    			add_location(div0, file, 1299, 12, 38378);
-    			attr_dev(label1, "class", "cp-y svelte-27ngvs");
-    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
+    			input0.value = input0_value_value = /*path*/ ctx[10].controlPoints[/*i*/ ctx[89]].x;
+    			add_location(input0, file, 1229, 13, 36385);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-oxdj5w");
+    			add_location(div0, file, 1227, 12, 36229);
+    			attr_dev(label1, "class", "cp-y svelte-oxdj5w");
+    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1304, 13, 38848);
+    			add_location(label1, file, 1232, 13, 36699);
     			attr_dev(input1, "id", "cp-input");
-    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			input1.value = input1_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].y;
-    			add_location(input1, file, 1305, 13, 38954);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-27ngvs");
-    			add_location(div1, file, 1303, 12, 38796);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div2, file, 1298, 11, 38329);
+    			input1.value = input1_value_value = /*path*/ ctx[10].controlPoints[/*i*/ ctx[89]].y;
+    			add_location(input1, file, 1233, 13, 36805);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-oxdj5w");
+    			add_location(div1, file, 1231, 12, 36647);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div2, file, 1226, 11, 36180);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1709,23 +1709,23 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93])) {
+    			if (dirty[0] & /*$paths*/ 512 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89])) {
     				attr_dev(label0, "for", label0_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input0_value_value !== (input0_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].x) && input0.value !== input0_value_value) {
+    			if (dirty[0] & /*$paths*/ 512 && input0_value_value !== (input0_value_value = /*path*/ ctx[10].controlPoints[/*i*/ ctx[89]].x) && input0.value !== input0_value_value) {
     				prop_dev(input0, "value", input0_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 512 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[10].id + "-" + /*i*/ ctx[89] + "-y")) {
     				attr_dev(label1, "for", label1_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && input1_value_value !== (input1_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].y) && input1.value !== input1_value_value) {
+    			if (dirty[0] & /*$paths*/ 512 && input1_value_value !== (input1_value_value = /*path*/ ctx[10].controlPoints[/*i*/ ctx[89]].y) && input1.value !== input1_value_value) {
     				prop_dev(input1, "value", input1_value_value);
     			}
 
-    			if (/*i*/ ctx[93] > 0) if_block.p(ctx, dirty);
+    			if (/*i*/ ctx[89] > 0) if_block.p(ctx, dirty);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(div2);
@@ -1739,14 +1739,14 @@ var app = (function () {
     		block,
     		id: create_if_block_1.name,
     		type: "if",
-    		source: "(1298:10) {#if i > 0 && i!=path.controlPoints.length-1}",
+    		source: "(1226:10) {#if i > 0 && i!=path.controlPoints.length-1}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1348:54) 
+    // (1276:54) 
     function create_if_block_6(ctx) {
     	let div;
     	let input;
@@ -1754,7 +1754,7 @@ var app = (function () {
     	let dispose;
 
     	function input_input_handler_3() {
-    		/*input_input_handler_3*/ ctx[71].call(input, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*input_input_handler_3*/ ctx[70].call(input, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	const block = {
@@ -1762,22 +1762,22 @@ var app = (function () {
     			div = element("div");
     			input = element("input");
     			attr_dev(input, "id", "constant-angle");
-    			attr_dev(input, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "0.01");
-    			add_location(input, file, 1349, 13, 42317);
-    			attr_dev(div, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div, file, 1348, 12, 42267);
+    			add_location(input, file, 1277, 13, 40168);
+    			attr_dev(div, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div, file, 1276, 12, 40118);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
     			append_dev(div, input);
-    			set_input_value(input, /*path*/ ctx[8].constantAngleDegrees);
+    			set_input_value(input, /*path*/ ctx[10].constantAngleDegrees);
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input, "input", input_input_handler_3),
-    					listen_dev(input, "input", /*input_handler_12*/ ctx[72], false, false, false, false)
+    					listen_dev(input, "input", /*input_handler_12*/ ctx[71], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1786,8 +1786,8 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128 && to_number(input.value) !== /*path*/ ctx[8].constantAngleDegrees) {
-    				set_input_value(input, /*path*/ ctx[8].constantAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 512 && to_number(input.value) !== /*path*/ ctx[10].constantAngleDegrees) {
+    				set_input_value(input, /*path*/ ctx[10].constantAngleDegrees);
     			}
     		},
     		d: function destroy(detaching) {
@@ -1801,14 +1801,14 @@ var app = (function () {
     		block,
     		id: create_if_block_6.name,
     		type: "if",
-    		source: "(1348:54) ",
+    		source: "(1276:54) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1343:56) 
+    // (1271:56) 
     function create_if_block_5(ctx) {
     	let div;
     	let label;
@@ -1818,7 +1818,7 @@ var app = (function () {
     	let dispose;
 
     	function input_change_handler() {
-    		/*input_change_handler*/ ctx[69].call(input, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*input_change_handler*/ ctx[68].call(input, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	const block = {
@@ -1830,26 +1830,26 @@ var app = (function () {
     			input = element("input");
     			attr_dev(label, "for", "reverse");
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-27ngvs");
-    			add_location(label, file, 1344, 13, 41999);
+    			attr_dev(label, "class", "svelte-oxdj5w");
+    			add_location(label, file, 1272, 13, 39850);
     			attr_dev(input, "id", "reverse");
     			attr_dev(input, "type", "checkbox");
-    			attr_dev(input, "class", "svelte-27ngvs");
-    			add_location(input, file, 1345, 13, 42076);
-    			attr_dev(div, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div, file, 1343, 12, 41949);
+    			attr_dev(input, "class", "svelte-oxdj5w");
+    			add_location(input, file, 1273, 13, 39927);
+    			attr_dev(div, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div, file, 1271, 12, 39800);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
     			append_dev(div, label);
     			append_dev(div, t1);
     			append_dev(div, input);
-    			input.checked = /*path*/ ctx[8].reverse;
+    			input.checked = /*path*/ ctx[10].reverse;
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input, "change", input_change_handler),
-    					listen_dev(input, "input", /*input_handler_11*/ ctx[70], false, false, false, false)
+    					listen_dev(input, "input", /*input_handler_11*/ ctx[69], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1858,8 +1858,8 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				input.checked = /*path*/ ctx[8].reverse;
+    			if (dirty[0] & /*$paths*/ 512) {
+    				input.checked = /*path*/ ctx[10].reverse;
     			}
     		},
     		d: function destroy(detaching) {
@@ -1873,14 +1873,14 @@ var app = (function () {
     		block,
     		id: create_if_block_5.name,
     		type: "if",
-    		source: "(1343:56) ",
+    		source: "(1271:56) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1336:11) {#if path.robotHeading === 'linear'}
+    // (1264:11) {#if path.robotHeading === 'linear'}
     function create_if_block_4(ctx) {
     	let div0;
     	let input0;
@@ -1891,11 +1891,11 @@ var app = (function () {
     	let dispose;
 
     	function input0_input_handler_1() {
-    		/*input0_input_handler_1*/ ctx[65].call(input0, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*input0_input_handler_1*/ ctx[64].call(input0, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	function input1_input_handler_1() {
-    		/*input1_input_handler_1*/ ctx[67].call(input1, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*input1_input_handler_1*/ ctx[66].call(input1, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	const block = {
@@ -1906,35 +1906,35 @@ var app = (function () {
     			div1 = element("div");
     			input1 = element("input");
     			attr_dev(input0, "id", "start-angle");
-    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 1337, 13, 41475);
-    			attr_dev(div0, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div0, file, 1336, 12, 41425);
+    			add_location(input0, file, 1265, 13, 39326);
+    			attr_dev(div0, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div0, file, 1264, 12, 39276);
     			attr_dev(input1, "id", "end-angle");
-    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 1340, 13, 41711);
-    			attr_dev(div1, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div1, file, 1339, 12, 41661);
+    			add_location(input1, file, 1268, 13, 39562);
+    			attr_dev(div1, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div1, file, 1267, 12, 39512);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div0, anchor);
     			append_dev(div0, input0);
-    			set_input_value(input0, /*path*/ ctx[8].startAngleDegrees);
+    			set_input_value(input0, /*path*/ ctx[10].startAngleDegrees);
     			insert_dev(target, t, anchor);
     			insert_dev(target, div1, anchor);
     			append_dev(div1, input1);
-    			set_input_value(input1, /*path*/ ctx[8].endAngleDegrees);
+    			set_input_value(input1, /*path*/ ctx[10].endAngleDegrees);
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input0, "input", input0_input_handler_1),
-    					listen_dev(input0, "input", /*input_handler_9*/ ctx[66], false, false, false, false),
+    					listen_dev(input0, "input", /*input_handler_9*/ ctx[65], false, false, false, false),
     					listen_dev(input1, "input", input1_input_handler_1),
-    					listen_dev(input1, "input", /*input_handler_10*/ ctx[68], false, false, false, false)
+    					listen_dev(input1, "input", /*input_handler_10*/ ctx[67], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1943,12 +1943,12 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128 && to_number(input0.value) !== /*path*/ ctx[8].startAngleDegrees) {
-    				set_input_value(input0, /*path*/ ctx[8].startAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 512 && to_number(input0.value) !== /*path*/ ctx[10].startAngleDegrees) {
+    				set_input_value(input0, /*path*/ ctx[10].startAngleDegrees);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && to_number(input1.value) !== /*path*/ ctx[8].endAngleDegrees) {
-    				set_input_value(input1, /*path*/ ctx[8].endAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 512 && to_number(input1.value) !== /*path*/ ctx[10].endAngleDegrees) {
+    				set_input_value(input1, /*path*/ ctx[10].endAngleDegrees);
     			}
     		},
     		d: function destroy(detaching) {
@@ -1964,14 +1964,14 @@ var app = (function () {
     		block,
     		id: create_if_block_4.name,
     		type: "if",
-    		source: "(1336:11) {#if path.robotHeading === 'linear'}",
+    		source: "(1264:11) {#if path.robotHeading === 'linear'}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1309:11) {#if (i > 0)}
+    // (1237:11) {#if (i > 0)}
     function create_if_block_2(ctx) {
     	let svg;
     	let path_1;
@@ -1979,7 +1979,7 @@ var app = (function () {
     	let dispose;
 
     	function click_handler_4() {
-    		return /*click_handler_4*/ ctx[60](/*path*/ ctx[8], /*i*/ ctx[93]);
+    		return /*click_handler_4*/ ctx[59](/*path*/ ctx[10], /*i*/ ctx[89]);
     	}
 
     	const block = {
@@ -1987,16 +1987,16 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path_1, "class", "svelte-27ngvs");
-    			add_location(path_1, file, 1313, 285, 39655);
+    			attr_dev(path_1, "class", "svelte-oxdj5w");
+    			add_location(path_1, file, 1241, 285, 37506);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
     			set_style(svg, "cursor", "pointer");
-    			attr_dev(svg, "class", "svelte-27ngvs");
-    			add_location(svg, file, 1313, 11, 39381);
+    			attr_dev(svg, "class", "svelte-oxdj5w");
+    			add_location(svg, file, 1241, 11, 37232);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -2021,29 +2021,29 @@ var app = (function () {
     		block,
     		id: create_if_block_2.name,
     		type: "if",
-    		source: "(1309:11) {#if (i > 0)}",
+    		source: "(1237:11) {#if (i > 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1291:8) {#each path.controlPoints as { x, y }
+    // (1219:8) {#each path.controlPoints as { x, y }
     function create_each_block_1(ctx) {
     	let div;
     	let t;
 
     	function select_block_type(ctx, dirty) {
-    		if (/*i*/ ctx[93] == 0) return create_if_block_7;
-    		if (/*i*/ ctx[93] > 0 && /*i*/ ctx[93] != /*path*/ ctx[8].controlPoints.length - 1) return create_if_block_8;
+    		if (/*i*/ ctx[89] == 0) return create_if_block_7;
+    		if (/*i*/ ctx[89] > 0 && /*i*/ ctx[89] != /*path*/ ctx[10].controlPoints.length - 1) return create_if_block_8;
     	}
 
     	let current_block_type = select_block_type(ctx);
     	let if_block0 = current_block_type && current_block_type(ctx);
 
     	function select_block_type_1(ctx, dirty) {
-    		if (/*i*/ ctx[93] > 0 && /*i*/ ctx[93] != /*path*/ ctx[8].controlPoints.length - 1) return create_if_block_1;
-    		if (/*i*/ ctx[93] == 0) return create_if_block_3;
+    		if (/*i*/ ctx[89] > 0 && /*i*/ ctx[89] != /*path*/ ctx[10].controlPoints.length - 1) return create_if_block_1;
+    		if (/*i*/ ctx[89] == 0) return create_if_block_3;
     	}
 
     	let current_block_type_1 = select_block_type_1(ctx);
@@ -2055,8 +2055,8 @@ var app = (function () {
     			if (if_block0) if_block0.c();
     			t = space();
     			if (if_block1) if_block1.c();
-    			attr_dev(div, "class", "control-point-box svelte-27ngvs");
-    			add_location(div, file, 1291, 9, 37925);
+    			attr_dev(div, "class", "control-point-box svelte-oxdj5w");
+    			add_location(div, file, 1219, 9, 35776);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -2106,14 +2106,14 @@ var app = (function () {
     		block,
     		id: create_each_block_1.name,
     		type: "each",
-    		source: "(1291:8) {#each path.controlPoints as { x, y }",
+    		source: "(1219:8) {#each path.controlPoints as { x, y }",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1267:4) {#each $paths as path}
+    // (1195:4) {#each $paths as path}
     function create_each_block(ctx) {
     	let div4;
     	let div2;
@@ -2130,7 +2130,7 @@ var app = (function () {
     	let t2;
     	let p;
     	let t3;
-    	let t4_value = /*path*/ ctx[8].id + 1 + "";
+    	let t4_value = /*path*/ ctx[10].id + 1 + "";
     	let t4;
     	let t5;
     	let div1;
@@ -2146,34 +2146,34 @@ var app = (function () {
     	let dispose;
 
     	function click_handler() {
-    		return /*click_handler*/ ctx[51](/*path*/ ctx[8]);
+    		return /*click_handler*/ ctx[50](/*path*/ ctx[10]);
     	}
 
     	function click_handler_1() {
-    		return /*click_handler_1*/ ctx[52](/*path*/ ctx[8]);
+    		return /*click_handler_1*/ ctx[51](/*path*/ ctx[10]);
     	}
 
     	function input_input_handler_2() {
-    		/*input_input_handler_2*/ ctx[53].call(input, /*each_value*/ ctx[90], /*path_index*/ ctx[91]);
+    		/*input_input_handler_2*/ ctx[52].call(input, /*each_value*/ ctx[84], /*path_index*/ ctx[85]);
     	}
 
     	function input_handler_4() {
-    		return /*input_handler_4*/ ctx[54](/*path*/ ctx[8]);
+    		return /*input_handler_4*/ ctx[53](/*path*/ ctx[10]);
     	}
 
     	function click_handler_2() {
-    		return /*click_handler_2*/ ctx[55](/*path*/ ctx[8]);
+    		return /*click_handler_2*/ ctx[54](/*path*/ ctx[10]);
     	}
 
     	function click_handler_3() {
-    		return /*click_handler_3*/ ctx[56](/*path*/ ctx[8]);
+    		return /*click_handler_3*/ ctx[55](/*path*/ ctx[10]);
     	}
 
     	function keydown_handler(...args) {
-    		return /*keydown_handler*/ ctx[57](/*path*/ ctx[8], ...args);
+    		return /*keydown_handler*/ ctx[56](/*path*/ ctx[10], ...args);
     	}
 
-    	let each_value_1 = /*path*/ ctx[8].controlPoints;
+    	let each_value_1 = /*path*/ ctx[10].controlPoints;
     	validate_each_argument(each_value_1);
     	let each_blocks = [];
 
@@ -2212,81 +2212,81 @@ var app = (function () {
     			}
 
     			attr_dev(path0, "d", "M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z");
-    			attr_dev(path0, "class", "svelte-27ngvs");
-    			add_location(path0, file, 1273, 534, 35313);
+    			attr_dev(path0, "class", "svelte-oxdj5w");
+    			add_location(path0, file, 1201, 534, 33164);
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
     			attr_dev(svg0, "width", "24px");
 
-    			attr_dev(svg0, "fill", svg0_fill_value = !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == /*$paths*/ ctx[7].length - 1)
+    			attr_dev(svg0, "fill", svg0_fill_value = !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == /*$paths*/ ctx[9].length - 1)
     			? "black"
     			: "gray");
 
-    			set_style(svg0, "cursor", !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == /*$paths*/ ctx[7].length - 1)
+    			set_style(svg0, "cursor", !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == /*$paths*/ ctx[9].length - 1)
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg0, "class", "svelte-27ngvs");
-    			add_location(svg0, file, 1273, 8, 34787);
+    			attr_dev(svg0, "class", "svelte-oxdj5w");
+    			add_location(svg0, file, 1201, 8, 32638);
     			attr_dev(path1, "d", "M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z");
-    			attr_dev(path1, "class", "svelte-27ngvs");
-    			add_location(path1, file, 1276, 482, 36011);
+    			attr_dev(path1, "class", "svelte-oxdj5w");
+    			add_location(path1, file, 1204, 482, 33862);
     			attr_dev(svg1, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg1, "height", "24px");
     			attr_dev(svg1, "viewBox", "0 -960 960 960");
     			attr_dev(svg1, "width", "24px");
 
-    			attr_dev(svg1, "fill", svg1_fill_value = !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == 1)
+    			attr_dev(svg1, "fill", svg1_fill_value = !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == 1)
     			? "black"
     			: "gray");
 
-    			set_style(svg1, "cursor", !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == 1)
+    			set_style(svg1, "cursor", !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == 1)
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg1, "class", "svelte-27ngvs");
-    			add_location(svg1, file, 1276, 8, 35537);
+    			attr_dev(svg1, "class", "svelte-oxdj5w");
+    			add_location(svg1, file, 1204, 8, 33388);
     			attr_dev(input, "type", "color");
-    			attr_dev(input, "class", "color-circle svelte-27ngvs");
-    			set_style(input, "background-color", /*path*/ ctx[8].color);
-    			add_location(input, file, 1277, 8, 36105);
-    			attr_dev(p, "class", "path-title svelte-27ngvs");
+    			attr_dev(input, "class", "color-circle svelte-oxdj5w");
+    			set_style(input, "background-color", /*path*/ ctx[10].color);
+    			add_location(input, file, 1205, 8, 33956);
+    			attr_dev(p, "class", "path-title svelte-oxdj5w");
     			set_style(p, "user-select", "none");
-    			add_location(p, file, 1278, 8, 36275);
-    			attr_dev(div0, "class", "path-and-color svelte-27ngvs");
-    			add_location(div0, file, 1269, 7, 34547);
+    			add_location(p, file, 1206, 8, 34126);
+    			attr_dev(div0, "class", "path-and-color svelte-oxdj5w");
+    			add_location(div0, file, 1197, 7, 32398);
     			attr_dev(path2, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path2, "class", "svelte-27ngvs");
-    			add_location(path2, file, 1284, 276, 36869);
+    			attr_dev(path2, "class", "svelte-oxdj5w");
+    			add_location(path2, file, 1212, 276, 34720);
     			attr_dev(svg2, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg2, "height", "24px");
     			attr_dev(svg2, "viewBox", "0 -960 960 960");
     			attr_dev(svg2, "width", "24px");
-    			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[7].length > 1 ? "#FF474D" : "gray");
-    			set_style(svg2, "cursor", /*$paths*/ ctx[7].length > 1 ? 'pointer' : 'default');
-    			attr_dev(svg2, "class", "svelte-27ngvs");
-    			add_location(svg2, file, 1284, 8, 36601);
+    			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[9].length > 1 ? "#FF474D" : "gray");
+    			set_style(svg2, "cursor", /*$paths*/ ctx[9].length > 1 ? 'pointer' : 'default');
+    			attr_dev(svg2, "class", "svelte-oxdj5w");
+    			add_location(svg2, file, 1212, 8, 34452);
     			attr_dev(path3, "d", "M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z");
-    			attr_dev(path3, "class", "svelte-27ngvs");
-    			add_location(path3, file, 1285, 347, 37429);
+    			attr_dev(path3, "class", "svelte-oxdj5w");
+    			add_location(path3, file, 1213, 347, 35280);
     			attr_dev(svg3, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg3, "height", "24px");
     			attr_dev(svg3, "viewBox", "0 -960 960 960");
     			attr_dev(svg3, "width", "24px");
     			attr_dev(svg3, "fill", "#90EE90");
     			set_style(svg3, "cursor", "pointer");
-    			attr_dev(svg3, "class", "svelte-27ngvs");
-    			add_location(svg3, file, 1285, 8, 37090);
-    			attr_dev(div1, "class", "add-and-remove svelte-27ngvs");
-    			add_location(div1, file, 1282, 7, 36499);
-    			attr_dev(div2, "class", "path-header svelte-27ngvs");
-    			add_location(div2, file, 1268, 6, 34514);
-    			attr_dev(div3, "class", "path-control-points svelte-27ngvs");
-    			add_location(div3, file, 1289, 7, 37832);
-    			attr_dev(div4, "class", "path svelte-27ngvs");
-    			set_style(div4, "border-color", /*path*/ ctx[8].color);
-    			add_location(div4, file, 1267, 5, 34453);
+    			attr_dev(svg3, "class", "svelte-oxdj5w");
+    			add_location(svg3, file, 1213, 8, 34941);
+    			attr_dev(div1, "class", "add-and-remove svelte-oxdj5w");
+    			add_location(div1, file, 1210, 7, 34350);
+    			attr_dev(div2, "class", "path-header svelte-oxdj5w");
+    			add_location(div2, file, 1196, 6, 32365);
+    			attr_dev(div3, "class", "path-control-points svelte-oxdj5w");
+    			add_location(div3, file, 1217, 7, 35683);
+    			attr_dev(div4, "class", "path svelte-oxdj5w");
+    			set_style(div4, "border-color", /*path*/ ctx[10].color);
+    			add_location(div4, file, 1195, 5, 32304);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div4, anchor);
@@ -2299,7 +2299,7 @@ var app = (function () {
     			append_dev(svg1, path1);
     			append_dev(div0, t1);
     			append_dev(div0, input);
-    			set_input_value(input, /*path*/ ctx[8].color);
+    			set_input_value(input, /*path*/ ctx[10].color);
     			append_dev(div0, t2);
     			append_dev(div0, p);
     			append_dev(p, t3);
@@ -2337,50 +2337,50 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 128 && svg0_fill_value !== (svg0_fill_value = !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == /*$paths*/ ctx[7].length - 1)
+    			if (dirty[0] & /*$paths*/ 512 && svg0_fill_value !== (svg0_fill_value = !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == /*$paths*/ ctx[9].length - 1)
     			? "black"
     			: "gray")) {
     				attr_dev(svg0, "fill", svg0_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(svg0, "cursor", !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == /*$paths*/ ctx[7].length - 1)
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(svg0, "cursor", !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == /*$paths*/ ctx[9].length - 1)
     				? 'pointer'
     				: 'default');
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && svg1_fill_value !== (svg1_fill_value = !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == 1)
+    			if (dirty[0] & /*$paths*/ 512 && svg1_fill_value !== (svg1_fill_value = !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == 1)
     			? "black"
     			: "gray")) {
     				attr_dev(svg1, "fill", svg1_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(svg1, "cursor", !(/*path*/ ctx[8].id == 0 || /*path*/ ctx[8].id == 1)
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(svg1, "cursor", !(/*path*/ ctx[10].id == 0 || /*path*/ ctx[10].id == 1)
     				? 'pointer'
     				: 'default');
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(input, "background-color", /*path*/ ctx[8].color);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(input, "background-color", /*path*/ ctx[10].color);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_input_value(input, /*path*/ ctx[8].color);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_input_value(input, /*path*/ ctx[10].color);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128 && t4_value !== (t4_value = /*path*/ ctx[8].id + 1 + "")) set_data_dev(t4, t4_value);
+    			if (dirty[0] & /*$paths*/ 512 && t4_value !== (t4_value = /*path*/ ctx[10].id + 1 + "")) set_data_dev(t4, t4_value);
 
-    			if (dirty[0] & /*$paths*/ 128 && svg2_fill_value !== (svg2_fill_value = /*$paths*/ ctx[7].length > 1 ? "#FF474D" : "gray")) {
+    			if (dirty[0] & /*$paths*/ 512 && svg2_fill_value !== (svg2_fill_value = /*$paths*/ ctx[9].length > 1 ? "#FF474D" : "gray")) {
     				attr_dev(svg2, "fill", svg2_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(svg2, "cursor", /*$paths*/ ctx[7].length > 1 ? 'pointer' : 'default');
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(svg2, "cursor", /*$paths*/ ctx[9].length > 1 ? 'pointer' : 'default');
     			}
 
-    			if (dirty[0] & /*$paths, generateBezierCurve, paths*/ 9437312 | dirty[1] & /*updateRobotPosition*/ 1) {
-    				each_value_1 = /*path*/ ctx[8].controlPoints;
+    			if (dirty[0] & /*$paths, generateBezierCurve, paths, updateRobotPosition*/ 1077936642) {
+    				each_value_1 = /*path*/ ctx[10].controlPoints;
     				validate_each_argument(each_value_1);
     				let i;
 
@@ -2403,8 +2403,8 @@ var app = (function () {
     				each_blocks.length = each_value_1.length;
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				set_style(div4, "border-color", /*path*/ ctx[8].color);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				set_style(div4, "border-color", /*path*/ ctx[10].color);
     			}
     		},
     		d: function destroy(detaching) {
@@ -2419,14 +2419,14 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(1267:4) {#each $paths as path}",
+    		source: "(1195:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1374:5) {:else}
+    // (1302:5) {:else}
     function create_else_block(ctx) {
     	let svg;
     	let path_1;
@@ -2438,22 +2438,22 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z");
-    			attr_dev(path_1, "class", "svelte-27ngvs");
-    			add_location(path_1, file, 1374, 134, 43426);
+    			attr_dev(path_1, "class", "svelte-oxdj5w");
+    			add_location(path_1, file, 1302, 134, 41277);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
-    			attr_dev(svg, "class", "svelte-27ngvs");
-    			add_location(svg, file, 1374, 6, 43298);
+    			attr_dev(svg, "class", "svelte-oxdj5w");
+    			add_location(svg, file, 1302, 6, 41149);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
     			append_dev(svg, path_1);
 
     			if (!mounted) {
-    				dispose = listen_dev(svg, "click", /*pausePath*/ ctx[32], false, false, false, false);
+    				dispose = listen_dev(svg, "click", /*pausePath*/ ctx[31], false, false, false, false);
     				mounted = true;
     			}
     		},
@@ -2469,14 +2469,14 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(1374:5) {:else}",
+    		source: "(1302:5) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1371:5) {#if !isPlaying}
+    // (1299:5) {#if !isPlaying}
     function create_if_block(ctx) {
     	let svg;
     	let path_1;
@@ -2488,22 +2488,22 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z");
-    			attr_dev(path_1, "class", "svelte-27ngvs");
-    			add_location(path_1, file, 1372, 134, 43195);
+    			attr_dev(path_1, "class", "svelte-oxdj5w");
+    			add_location(path_1, file, 1300, 134, 41046);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#90EE90");
-    			attr_dev(svg, "class", "svelte-27ngvs");
-    			add_location(svg, file, 1372, 7, 43068);
+    			attr_dev(svg, "class", "svelte-oxdj5w");
+    			add_location(svg, file, 1300, 7, 40919);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
     			append_dev(svg, path_1);
 
     			if (!mounted) {
-    				dispose = listen_dev(svg, "click", /*playPath*/ ctx[30], false, false, false, false);
+    				dispose = listen_dev(svg, "click", /*playPath*/ ctx[29], false, false, false, false);
     				mounted = true;
     			}
     		},
@@ -2519,7 +2519,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(1371:5) {#if !isPlaying}",
+    		source: "(1299:5) {#if !isPlaying}",
     		ctx
     	});
 
@@ -2630,33 +2630,33 @@ var app = (function () {
     	let div22;
     	let t60;
     	let t61;
-    	let t62;
     	let svg1;
-    	let t63;
+    	let if_block3_anchor;
+    	let t62;
     	let div23;
-    	let t64;
+    	let t63;
     	let button2;
-    	let t66;
+    	let t65;
     	let div27;
     	let div26;
     	let div25;
-    	let t67;
+    	let t66;
     	let input9;
     	let mounted;
     	let dispose;
-    	let if_block0 = /*$paths*/ ctx[7].length > 0 && create_if_block_15(ctx);
-    	let if_block1 = /*$paths*/ ctx[7].length > 0 && create_if_block_14(ctx);
-    	let each_value_5 = /*$paths*/ ctx[7];
-    	validate_each_argument(each_value_5);
+    	let if_block0 = /*$paths*/ ctx[9].length > 0 && create_if_block_14(ctx);
+    	let if_block1 = /*$paths*/ ctx[9].length > 0 && create_if_block_13(ctx);
+    	let each_value_4 = /*$paths*/ ctx[9];
+    	validate_each_argument(each_value_4);
     	let each_blocks_2 = [];
 
-    	for (let i = 0; i < each_value_5.length; i += 1) {
-    		each_blocks_2[i] = create_each_block_5(get_each_context_5(ctx, each_value_5, i));
+    	for (let i = 0; i < each_value_4.length; i += 1) {
+    		each_blocks_2[i] = create_each_block_4(get_each_context_4(ctx, each_value_4, i));
     	}
 
-    	let if_block2 = /*$paths*/ ctx[7].length > 0 && create_if_block_13(ctx);
-    	let if_block3 = /*shouldShowHitbox*/ ctx[15] && create_if_block_9(ctx);
-    	let each_value_2 = /*$paths*/ ctx[7];
+    	let if_block2 = /*$paths*/ ctx[9].length > 0 && create_if_block_12(ctx);
+    	let if_block3 = /*$shouldShowHitbox*/ ctx[19] && create_if_block_10(ctx);
+    	let each_value_2 = /*offsetPaths*/ ctx[8];
     	validate_each_argument(each_value_2);
     	let each_blocks_1 = [];
 
@@ -2664,7 +2664,7 @@ var app = (function () {
     		each_blocks_1[i] = create_each_block_2(get_each_context_2(ctx, each_value_2, i));
     	}
 
-    	let each_value = /*$paths*/ ctx[7];
+    	let each_value = /*$paths*/ ctx[9];
     	validate_each_argument(each_value);
     	let each_blocks = [];
 
@@ -2673,7 +2673,7 @@ var app = (function () {
     	}
 
     	function select_block_type_3(ctx, dirty) {
-    		if (!/*isPlaying*/ ctx[4]) return create_if_block;
+    		if (!/*isPlaying*/ ctx[6]) return create_if_block;
     		return create_else_block;
     	}
 
@@ -2816,261 +2816,261 @@ var app = (function () {
     			t60 = space();
     			if (if_block2) if_block2.c();
     			t61 = space();
-    			if (if_block3) if_block3.c();
-    			t62 = space();
     			svg1 = svg_element("svg");
+    			if (if_block3) if_block3.c();
+    			if_block3_anchor = empty();
 
     			for (let i = 0; i < each_blocks_1.length; i += 1) {
     				each_blocks_1[i].c();
     			}
 
-    			t63 = space();
+    			t62 = space();
     			div23 = element("div");
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].c();
     			}
 
-    			t64 = space();
+    			t63 = space();
     			button2 = element("button");
     			button2.textContent = "Add Path";
-    			t66 = space();
+    			t65 = space();
     			div27 = element("div");
     			div26 = element("div");
     			div25 = element("div");
     			if_block4.c();
-    			t67 = space();
+    			t66 = space();
     			input9 = element("input");
-    			attr_dev(h1, "class", "page-title svelte-27ngvs");
-    			add_location(h1, file, 1073, 2, 26361);
+    			attr_dev(h1, "class", "page-title svelte-oxdj5w");
+    			add_location(h1, file, 1016, 2, 24523);
     			attr_dev(path_1, "d", "M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z");
-    			attr_dev(path_1, "class", "svelte-27ngvs");
-    			add_location(path_1, file, 1076, 155, 26642);
+    			attr_dev(path_1, "class", "svelte-oxdj5w");
+    			add_location(path_1, file, 1019, 155, 24804);
     			attr_dev(svg0, "id", "code-window-btn");
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
     			attr_dev(svg0, "width", "24px");
     			attr_dev(svg0, "fill", "black");
-    			attr_dev(svg0, "class", "svelte-27ngvs");
-    			add_location(svg0, file, 1076, 3, 26490);
+    			attr_dev(svg0, "class", "svelte-oxdj5w");
+    			add_location(svg0, file, 1019, 3, 24652);
     			set_style(button0, "user-select", "none");
-    			attr_dev(button0, "class", "svelte-27ngvs");
-    			add_location(button0, file, 1077, 3, 26879);
+    			attr_dev(button0, "class", "svelte-oxdj5w");
+    			add_location(button0, file, 1020, 3, 25041);
     			set_style(button1, "user-select", "none");
-    			attr_dev(button1, "class", "svelte-27ngvs");
-    			add_location(button1, file, 1078, 3, 26978);
-    			attr_dev(div0, "class", "export-import svelte-27ngvs");
-    			add_location(div0, file, 1074, 2, 26399);
-    			attr_dev(div1, "class", "header svelte-27ngvs");
-    			add_location(div1, file, 1072, 1, 26338);
-    			attr_dev(h20, "class", "section-title svelte-27ngvs");
+    			attr_dev(button1, "class", "svelte-oxdj5w");
+    			add_location(button1, file, 1021, 3, 25140);
+    			attr_dev(div0, "class", "export-import svelte-oxdj5w");
+    			add_location(div0, file, 1017, 2, 24561);
+    			attr_dev(div1, "class", "header svelte-oxdj5w");
+    			add_location(div1, file, 1015, 1, 24500);
+    			attr_dev(h20, "class", "section-title svelte-oxdj5w");
     			set_style(h20, "user-select", "none");
-    			add_location(h20, file, 1088, 6, 27235);
+    			add_location(h20, file, 1031, 6, 25397);
     			attr_dev(label0, "for", "robotUnits");
     			set_style(label0, "user-select", "none");
-    			attr_dev(label0, "class", "svelte-27ngvs");
-    			add_location(label0, file, 1091, 7, 27348);
+    			attr_dev(label0, "class", "svelte-oxdj5w");
+    			add_location(label0, file, 1034, 7, 25510);
     			option0.__value = "inches";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-27ngvs");
-    			add_location(option0, file, 1093, 8, 27504);
+    			attr_dev(option0, "class", "svelte-oxdj5w");
+    			add_location(option0, file, 1036, 8, 25666);
     			option1.__value = "cm";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-27ngvs");
-    			add_location(option1, file, 1094, 8, 27551);
+    			attr_dev(option1, "class", "svelte-oxdj5w");
+    			add_location(option1, file, 1037, 8, 25713);
     			attr_dev(select0, "id", "robotUnits");
-    			attr_dev(select0, "class", "standard-input-box svelte-27ngvs");
-    			if (/*robotUnits*/ ctx[2] === void 0) add_render_callback(() => /*select0_change_handler*/ ctx[36].call(select0));
-    			add_location(select0, file, 1092, 7, 27420);
-    			attr_dev(div2, "class", "robot-options svelte-27ngvs");
-    			add_location(div2, file, 1090, 6, 27313);
+    			attr_dev(select0, "class", "standard-input-box svelte-oxdj5w");
+    			if (/*robotUnits*/ ctx[4] === void 0) add_render_callback(() => /*select0_change_handler*/ ctx[35].call(select0));
+    			add_location(select0, file, 1035, 7, 25582);
+    			attr_dev(div2, "class", "robot-options svelte-oxdj5w");
+    			add_location(div2, file, 1033, 6, 25475);
     			attr_dev(label1, "for", "robot-length");
     			set_style(label1, "user-select", "none");
-    			attr_dev(label1, "class", "svelte-27ngvs");
-    			add_location(label1, file, 1101, 7, 27677);
+    			attr_dev(label1, "class", "svelte-oxdj5w");
+    			add_location(label1, file, 1044, 7, 25839);
     			attr_dev(input0, "id", "robot-length");
-    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			add_location(input0, file, 1102, 7, 27758);
-    			attr_dev(div3, "class", "robot-options svelte-27ngvs");
-    			add_location(div3, file, 1100, 6, 27642);
+    			add_location(input0, file, 1045, 7, 25920);
+    			attr_dev(div3, "class", "robot-options svelte-oxdj5w");
+    			add_location(div3, file, 1043, 6, 25804);
     			attr_dev(label2, "for", "robot-width");
     			set_style(label2, "user-select", "none");
-    			attr_dev(label2, "class", "svelte-27ngvs");
-    			add_location(label2, file, 1106, 7, 27988);
+    			attr_dev(label2, "class", "svelte-oxdj5w");
+    			add_location(label2, file, 1049, 7, 26150);
     			attr_dev(input1, "id", "robot-width");
-    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
+    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			add_location(input1, file, 1107, 7, 28067);
-    			attr_dev(div4, "class", "robot-options svelte-27ngvs");
-    			add_location(div4, file, 1105, 6, 27953);
+    			add_location(input1, file, 1050, 7, 26229);
+    			attr_dev(div4, "class", "robot-options svelte-oxdj5w");
+    			add_location(div4, file, 1048, 6, 26115);
     			attr_dev(h21, "id", "field-options");
-    			attr_dev(h21, "class", "section-title svelte-27ngvs");
+    			attr_dev(h21, "class", "section-title svelte-oxdj5w");
     			set_style(h21, "user-select", "none");
-    			add_location(h21, file, 1112, 6, 28261);
-    			attr_dev(label3, "class", "adv-options svelte-27ngvs");
+    			add_location(h21, file, 1055, 6, 26423);
+    			attr_dev(label3, "class", "adv-options svelte-oxdj5w");
     			set_style(label3, "user-select", "none");
-    			add_location(label3, file, 1117, 6, 28462);
-    			attr_dev(label4, "class", "cp-x svelte-27ngvs");
+    			add_location(label3, file, 1060, 6, 26624);
+    			attr_dev(label4, "class", "cp-x svelte-oxdj5w");
     			set_style(label4, "user-select", "none");
-    			add_location(label4, file, 1123, 8, 28712);
-    			attr_dev(div5, "class", "control-point-mini-box-x svelte-27ngvs");
-    			add_location(div5, file, 1121, 7, 28600);
-    			attr_dev(label5, "class", "cp-x svelte-27ngvs");
+    			add_location(label4, file, 1066, 8, 26874);
+    			attr_dev(div5, "class", "control-point-mini-box-x svelte-oxdj5w");
+    			add_location(div5, file, 1064, 7, 26762);
+    			attr_dev(label5, "class", "cp-x svelte-oxdj5w");
     			set_style(label5, "user-select", "none");
-    			add_location(label5, file, 1130, 8, 29199);
-    			attr_dev(div6, "class", "control-point-mini-box-y svelte-27ngvs");
-    			add_location(div6, file, 1128, 7, 29087);
-    			attr_dev(div7, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div7, file, 1120, 6, 28556);
-    			attr_dev(div8, "class", "start-pos-container svelte-27ngvs");
-    			add_location(div8, file, 1116, 6, 28422);
-    			attr_dev(label6, "class", "adv-options svelte-27ngvs");
+    			add_location(label5, file, 1073, 8, 27361);
+    			attr_dev(div6, "class", "control-point-mini-box-y svelte-oxdj5w");
+    			add_location(div6, file, 1071, 7, 27249);
+    			attr_dev(div7, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div7, file, 1063, 6, 26718);
+    			attr_dev(div8, "class", "start-pos-container svelte-oxdj5w");
+    			add_location(div8, file, 1059, 6, 26584);
+    			attr_dev(label6, "class", "adv-options svelte-oxdj5w");
     			set_style(label6, "user-select", "none");
-    			add_location(label6, file, 1139, 6, 29664);
-    			attr_dev(label7, "class", "cp-x svelte-27ngvs");
+    			add_location(label6, file, 1082, 6, 27826);
+    			attr_dev(label7, "class", "cp-x svelte-oxdj5w");
     			set_style(label7, "user-select", "none");
-    			add_location(label7, file, 1144, 9, 29947);
-    			attr_dev(input2, "class", "start-pos-box svelte-27ngvs");
+    			add_location(label7, file, 1087, 9, 28109);
+    			attr_dev(input2, "class", "start-pos-box svelte-oxdj5w");
     			attr_dev(input2, "type", "number");
     			attr_dev(input2, "step", "0.001");
     			input2.readOnly = true;
-    			add_location(input2, file, 1145, 9, 30013);
-    			attr_dev(div9, "class", "control-point-mini-box-x svelte-27ngvs");
-    			add_location(div9, file, 1142, 8, 29833);
-    			attr_dev(label8, "class", "cp-y svelte-27ngvs");
+    			add_location(input2, file, 1088, 9, 28175);
+    			attr_dev(div9, "class", "control-point-mini-box-x svelte-oxdj5w");
+    			add_location(div9, file, 1085, 8, 27995);
+    			attr_dev(label8, "class", "cp-y svelte-oxdj5w");
     			set_style(label8, "user-select", "none");
-    			add_location(label8, file, 1149, 9, 30238);
-    			attr_dev(input3, "class", "start-pos-box svelte-27ngvs");
+    			add_location(label8, file, 1092, 9, 28400);
+    			attr_dev(input3, "class", "start-pos-box svelte-oxdj5w");
     			attr_dev(input3, "type", "number");
     			attr_dev(input3, "step", "0.001");
     			input3.readOnly = true;
-    			add_location(input3, file, 1150, 9, 30304);
-    			attr_dev(div10, "class", "control-point-mini-box-y svelte-27ngvs");
-    			add_location(div10, file, 1147, 8, 30124);
-    			attr_dev(label9, "class", "cp-heading svelte-27ngvs");
+    			add_location(input3, file, 1093, 9, 28466);
+    			attr_dev(div10, "class", "control-point-mini-box-y svelte-oxdj5w");
+    			add_location(div10, file, 1090, 8, 28286);
+    			attr_dev(label9, "class", "cp-heading svelte-oxdj5w");
     			set_style(label9, "user-select", "none");
-    			add_location(label9, file, 1154, 9, 30535);
-    			attr_dev(input4, "class", "start-pos-box svelte-27ngvs");
+    			add_location(label9, file, 1097, 9, 28697);
+    			attr_dev(input4, "class", "start-pos-box svelte-oxdj5w");
     			attr_dev(input4, "type", "number");
     			attr_dev(input4, "step", "0.001");
-    			input4.value = input4_value_value = Math.round(/*robotLiveAngle*/ ctx[13]);
+    			input4.value = input4_value_value = Math.round(/*robotLiveAngle*/ ctx[15]);
     			input4.readOnly = true;
-    			add_location(input4, file, 1155, 9, 30607);
-    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-27ngvs");
-    			add_location(div11, file, 1152, 8, 30415);
-    			attr_dev(div12, "class", "cp-x-y svelte-27ngvs");
-    			add_location(div12, file, 1141, 7, 29804);
-    			attr_dev(label10, "class", "cp-x svelte-27ngvs");
+    			add_location(input4, file, 1098, 9, 28769);
+    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-oxdj5w");
+    			add_location(div11, file, 1095, 8, 28577);
+    			attr_dev(div12, "class", "cp-x-y svelte-oxdj5w");
+    			add_location(div12, file, 1084, 7, 27966);
+    			attr_dev(label10, "class", "cp-x svelte-oxdj5w");
     			set_style(label10, "user-select", "none");
     			set_style(label10, "font-weight", "600");
-    			add_location(label10, file, 1160, 8, 30871);
-    			attr_dev(input5, "class", "start-pos-box svelte-27ngvs");
+    			add_location(label10, file, 1103, 8, 29033);
+    			attr_dev(input5, "class", "start-pos-box svelte-oxdj5w");
     			attr_dev(input5, "type", "number");
     			attr_dev(input5, "step", "0.001");
-    			input5.value = input5_value_value = /*currentPathIndex*/ ctx[11] + 1;
+    			input5.value = input5_value_value = /*currentPathIndex*/ ctx[13] + 1;
     			input5.readOnly = true;
-    			add_location(input5, file, 1161, 8, 30963);
-    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-27ngvs");
-    			add_location(div13, file, 1158, 7, 30746);
+    			add_location(input5, file, 1104, 8, 29125);
+    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-oxdj5w");
+    			add_location(div13, file, 1101, 7, 28908);
     			attr_dev(div14, "id", "live-pos");
-    			attr_dev(div14, "class", "control-point-mini-box svelte-27ngvs");
-    			add_location(div14, file, 1140, 6, 29746);
+    			attr_dev(div14, "class", "control-point-mini-box svelte-oxdj5w");
+    			add_location(div14, file, 1083, 6, 27908);
     			attr_dev(h22, "id", "advanced-options");
-    			attr_dev(h22, "class", "section-title svelte-27ngvs");
+    			attr_dev(h22, "class", "section-title svelte-oxdj5w");
     			set_style(h22, "user-select", "none");
-    			add_location(h22, file, 1166, 6, 31101);
+    			add_location(h22, file, 1109, 6, 29263);
     			attr_dev(label11, "for", "field-length");
     			set_style(label11, "user-select", "none");
-    			attr_dev(label11, "class", "svelte-27ngvs");
-    			add_location(label11, file, 1168, 7, 31241);
+    			attr_dev(label11, "class", "svelte-oxdj5w");
+    			add_location(label11, file, 1111, 7, 29403);
     			attr_dev(input6, "id", "auto-link-paths");
     			attr_dev(input6, "type", "checkbox");
-    			attr_dev(input6, "class", "svelte-27ngvs");
-    			add_location(input6, file, 1169, 7, 31328);
-    			attr_dev(div15, "class", "advanced-options svelte-27ngvs");
-    			add_location(div15, file, 1167, 6, 31203);
+    			attr_dev(input6, "class", "svelte-oxdj5w");
+    			add_location(input6, file, 1112, 7, 29490);
+    			attr_dev(div15, "class", "advanced-options svelte-oxdj5w");
+    			add_location(div15, file, 1110, 6, 29365);
     			attr_dev(label12, "for", "field-length");
     			set_style(label12, "user-select", "none");
-    			attr_dev(label12, "class", "svelte-27ngvs");
-    			add_location(label12, file, 1173, 7, 31465);
+    			attr_dev(label12, "class", "svelte-oxdj5w");
+    			add_location(label12, file, 1116, 7, 29628);
     			attr_dev(input7, "id", "auto-link-paths");
     			attr_dev(input7, "type", "checkbox");
-    			attr_dev(input7, "class", "svelte-27ngvs");
-    			add_location(input7, file, 1174, 7, 31556);
-    			attr_dev(div16, "class", "advanced-options svelte-27ngvs");
-    			add_location(div16, file, 1172, 6, 31427);
+    			attr_dev(input7, "class", "svelte-oxdj5w");
+    			add_location(input7, file, 1117, 7, 29719);
+    			attr_dev(div16, "class", "advanced-options svelte-oxdj5w");
+    			add_location(div16, file, 1115, 6, 29590);
     			attr_dev(label13, "for", "field-length");
     			set_style(label13, "user-select", "none");
-    			attr_dev(label13, "class", "svelte-27ngvs");
-    			add_location(label13, file, 1177, 7, 31692);
+    			attr_dev(label13, "class", "svelte-oxdj5w");
+    			add_location(label13, file, 1120, 7, 29855);
     			attr_dev(input8, "id", "auto-link-paths");
     			attr_dev(input8, "type", "checkbox");
-    			attr_dev(input8, "class", "svelte-27ngvs");
-    			add_location(input8, file, 1178, 7, 31776);
-    			attr_dev(div17, "class", "advanced-options svelte-27ngvs");
-    			add_location(div17, file, 1176, 6, 31654);
+    			attr_dev(input8, "class", "svelte-oxdj5w");
+    			add_location(input8, file, 1121, 7, 29939);
+    			attr_dev(div17, "class", "advanced-options svelte-oxdj5w");
+    			add_location(div17, file, 1119, 6, 29817);
     			attr_dev(label14, "for", "rotationUnits");
     			set_style(label14, "user-select", "none");
-    			attr_dev(label14, "class", "svelte-27ngvs");
-    			add_location(label14, file, 1181, 7, 31909);
+    			attr_dev(label14, "class", "svelte-oxdj5w");
+    			add_location(label14, file, 1124, 7, 30072);
     			option2.__value = "degrees";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-27ngvs");
-    			add_location(option2, file, 1183, 8, 32085);
+    			attr_dev(option2, "class", "svelte-oxdj5w");
+    			add_location(option2, file, 1126, 8, 30248);
     			option3.__value = "radians";
     			option3.value = option3.__value;
-    			attr_dev(option3, "class", "svelte-27ngvs");
-    			add_location(option3, file, 1184, 8, 32134);
+    			attr_dev(option3, "class", "svelte-oxdj5w");
+    			add_location(option3, file, 1127, 8, 30297);
     			attr_dev(select1, "id", "rotationUnits");
-    			attr_dev(select1, "class", "standard-input-box svelte-27ngvs");
-    			if (/*rotationUnits*/ ctx[3] === void 0) add_render_callback(() => /*select1_change_handler*/ ctx[50].call(select1));
-    			add_location(select1, file, 1182, 7, 31995);
-    			attr_dev(div18, "class", "advanced-options svelte-27ngvs");
-    			add_location(div18, file, 1180, 6, 31871);
-    			attr_dev(div19, "class", "svelte-27ngvs");
-    			add_location(div19, file, 1087, 5, 27223);
-    			attr_dev(div20, "class", "robot-options-menu svelte-27ngvs");
-    			add_location(div20, file, 1086, 4, 27185);
-    			attr_dev(div21, "class", "settings-column svelte-27ngvs");
-    			add_location(div21, file, 1085, 3, 27151);
+    			attr_dev(select1, "class", "standard-input-box svelte-oxdj5w");
+    			if (/*rotationUnits*/ ctx[5] === void 0) add_render_callback(() => /*select1_change_handler*/ ctx[49].call(select1));
+    			add_location(select1, file, 1125, 7, 30158);
+    			attr_dev(div18, "class", "advanced-options svelte-oxdj5w");
+    			add_location(div18, file, 1123, 6, 30034);
+    			attr_dev(div19, "class", "svelte-oxdj5w");
+    			add_location(div19, file, 1030, 5, 25385);
+    			attr_dev(div20, "class", "robot-options-menu svelte-oxdj5w");
+    			add_location(div20, file, 1029, 4, 25347);
+    			attr_dev(div21, "class", "settings-column svelte-oxdj5w");
+    			add_location(div21, file, 1028, 3, 25313);
     			attr_dev(svg1, "viewBox", "0 0 144 144");
     			attr_dev(svg1, "width", "100%");
     			attr_dev(svg1, "height", "100%");
     			set_style(svg1, "position", "absolute");
     			set_style(svg1, "top", "0");
     			set_style(svg1, "left", "0");
-    			attr_dev(svg1, "class", "svelte-27ngvs");
-    			add_location(svg1, file, 1250, 4, 34043);
-    			attr_dev(div22, "class", "field svelte-27ngvs");
-    			add_location(div22, file, 1191, 3, 32242);
+    			attr_dev(svg1, "class", "svelte-oxdj5w");
+    			add_location(svg1, file, 1158, 4, 31070);
+    			attr_dev(div22, "class", "field svelte-oxdj5w");
+    			add_location(div22, file, 1134, 3, 30405);
     			set_style(button2, "user-select", "none");
-    			attr_dev(button2, "class", "svelte-27ngvs");
-    			add_location(button2, file, 1361, 4, 42621);
-    			attr_dev(div23, "class", "paths svelte-27ngvs");
-    			add_location(div23, file, 1265, 3, 34401);
-    			attr_dev(div24, "class", "container svelte-27ngvs");
-    			add_location(div24, file, 1084, 2, 27124);
-    			attr_dev(div25, "class", "play-button svelte-27ngvs");
-    			add_location(div25, file, 1367, 4, 42821);
+    			attr_dev(button2, "class", "svelte-oxdj5w");
+    			add_location(button2, file, 1289, 4, 40472);
+    			attr_dev(div23, "class", "paths svelte-oxdj5w");
+    			add_location(div23, file, 1193, 3, 32252);
+    			attr_dev(div24, "class", "container svelte-oxdj5w");
+    			add_location(div24, file, 1027, 2, 25286);
+    			attr_dev(div25, "class", "play-button svelte-oxdj5w");
+    			add_location(div25, file, 1295, 4, 40672);
     			attr_dev(input9, "type", "range");
     			attr_dev(input9, "id", "scrub");
     			attr_dev(input9, "min", "0");
     			attr_dev(input9, "max", "100");
     			attr_dev(input9, "step", "0.001");
-    			attr_dev(input9, "class", "svelte-27ngvs");
-    			add_location(input9, file, 1378, 4, 43606);
-    			attr_dev(div26, "class", "scrubbing-bar svelte-27ngvs");
-    			add_location(div26, file, 1366, 3, 42789);
-    			attr_dev(div27, "class", "footer svelte-27ngvs");
-    			add_location(div27, file, 1365, 2, 42765);
-    			attr_dev(div28, "class", "main-content svelte-27ngvs");
-    			add_location(div28, file, 1082, 1, 27093);
-    			attr_dev(div29, "class", "svelte-27ngvs");
-    			add_location(div29, file, 1071, 0, 26331);
+    			attr_dev(input9, "class", "svelte-oxdj5w");
+    			add_location(input9, file, 1306, 4, 41457);
+    			attr_dev(div26, "class", "scrubbing-bar svelte-oxdj5w");
+    			add_location(div26, file, 1294, 3, 40640);
+    			attr_dev(div27, "class", "footer svelte-oxdj5w");
+    			add_location(div27, file, 1293, 2, 40616);
+    			attr_dev(div28, "class", "main-content svelte-oxdj5w");
+    			add_location(div28, file, 1025, 1, 25255);
+    			attr_dev(div29, "class", "svelte-oxdj5w");
+    			add_location(div29, file, 1014, 0, 24493);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -3101,19 +3101,19 @@ var app = (function () {
     			append_dev(div2, select0);
     			append_dev(select0, option0);
     			append_dev(select0, option1);
-    			select_option(select0, /*robotUnits*/ ctx[2], true);
+    			select_option(select0, /*robotUnits*/ ctx[4], true);
     			append_dev(div19, t13);
     			append_dev(div19, div3);
     			append_dev(div3, label1);
     			append_dev(div3, t15);
     			append_dev(div3, input0);
-    			set_input_value(input0, /*displayLength*/ ctx[17]);
+    			set_input_value(input0, /*displayLength*/ ctx[18]);
     			append_dev(div19, t16);
     			append_dev(div19, div4);
     			append_dev(div4, label2);
     			append_dev(div4, t18);
     			append_dev(div4, input1);
-    			set_input_value(input1, /*displayWidth*/ ctx[16]);
+    			set_input_value(input1, /*displayWidth*/ ctx[17]);
     			append_dev(div19, t19);
     			append_dev(div19, h21);
     			append_dev(div19, t21);
@@ -3139,13 +3139,13 @@ var app = (function () {
     			append_dev(div9, label7);
     			append_dev(div9, t33);
     			append_dev(div9, input2);
-    			set_input_value(input2, /*robotX*/ ctx[9]);
+    			set_input_value(input2, /*robotX*/ ctx[11]);
     			append_dev(div12, t34);
     			append_dev(div12, div10);
     			append_dev(div10, label8);
     			append_dev(div10, t36);
     			append_dev(div10, input3);
-    			set_input_value(input3, /*robotY*/ ctx[10]);
+    			set_input_value(input3, /*robotY*/ ctx[12]);
     			append_dev(div12, t37);
     			append_dev(div12, div11);
     			append_dev(div11, label9);
@@ -3163,19 +3163,19 @@ var app = (function () {
     			append_dev(div15, label11);
     			append_dev(div15, t47);
     			append_dev(div15, input6);
-    			input6.checked = /*shouldShowHitbox*/ ctx[15];
+    			input6.checked = /*$shouldShowHitbox*/ ctx[19];
     			append_dev(div19, t48);
     			append_dev(div19, div16);
     			append_dev(div16, label12);
     			append_dev(div16, t50);
     			append_dev(div16, input7);
-    			input7.checked = /*shouldRepeatPath*/ ctx[12];
+    			input7.checked = /*shouldRepeatPath*/ ctx[14];
     			append_dev(div19, t51);
     			append_dev(div19, div17);
     			append_dev(div17, label13);
     			append_dev(div17, t53);
     			append_dev(div17, input8);
-    			input8.checked = /*autoLinkPaths*/ ctx[14];
+    			input8.checked = /*autoLinkPaths*/ ctx[16];
     			append_dev(div19, t54);
     			append_dev(div19, div18);
     			append_dev(div18, label14);
@@ -3183,7 +3183,7 @@ var app = (function () {
     			append_dev(div18, select1);
     			append_dev(select1, option2);
     			append_dev(select1, option3);
-    			select_option(select1, /*rotationUnits*/ ctx[3], true);
+    			select_option(select1, /*rotationUnits*/ ctx[5], true);
     			append_dev(div24, t59);
     			append_dev(div24, div22);
 
@@ -3196,9 +3196,9 @@ var app = (function () {
     			append_dev(div22, t60);
     			if (if_block2) if_block2.m(div22, null);
     			append_dev(div22, t61);
-    			if (if_block3) if_block3.m(div22, null);
-    			append_dev(div22, t62);
     			append_dev(div22, svg1);
+    			if (if_block3) if_block3.m(svg1, null);
+    			append_dev(svg1, if_block3_anchor);
 
     			for (let i = 0; i < each_blocks_1.length; i += 1) {
     				if (each_blocks_1[i]) {
@@ -3206,7 +3206,7 @@ var app = (function () {
     				}
     			}
 
-    			append_dev(div24, t63);
+    			append_dev(div24, t62);
     			append_dev(div24, div23);
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
@@ -3215,60 +3215,60 @@ var app = (function () {
     				}
     			}
 
-    			append_dev(div23, t64);
+    			append_dev(div23, t63);
     			append_dev(div23, button2);
-    			append_dev(div28, t66);
+    			append_dev(div28, t65);
     			append_dev(div28, div27);
     			append_dev(div27, div26);
     			append_dev(div26, div25);
     			if_block4.m(div25, null);
-    			append_dev(div26, t67);
+    			append_dev(div26, t66);
     			append_dev(div26, input9);
-    			set_input_value(input9, /*linearScrubValue*/ ctx[5]);
+    			set_input_value(input9, /*linearScrubValue*/ ctx[7]);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(svg0, "click", /*showCodeWindow*/ ctx[34], false, false, false, false),
-    					listen_dev(button0, "click", /*importControlPoints*/ ctx[25], false, false, false, false),
-    					listen_dev(button1, "click", /*exportControlPoints*/ ctx[24], false, false, false, false),
-    					listen_dev(select0, "change", /*select0_change_handler*/ ctx[36]),
-    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[37]),
-    					listen_dev(input0, "input", /*input_handler*/ ctx[38], false, false, false, false),
-    					listen_dev(input1, "input", /*input1_input_handler*/ ctx[39]),
-    					listen_dev(input1, "input", /*input_handler_1*/ ctx[40], false, false, false, false),
-    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[45]),
-    					listen_dev(input3, "input", /*input3_input_handler*/ ctx[46]),
-    					listen_dev(input6, "change", /*input6_change_handler*/ ctx[47]),
-    					listen_dev(input7, "change", /*input7_change_handler*/ ctx[48]),
-    					listen_dev(input8, "change", /*input8_change_handler*/ ctx[49]),
-    					listen_dev(select1, "change", /*select1_change_handler*/ ctx[50]),
-    					listen_dev(button2, "click", /*click_handler_5*/ ctx[73], false, false, false, false),
-    					listen_dev(input9, "change", /*input9_change_input_handler*/ ctx[74]),
-    					listen_dev(input9, "input", /*input9_change_input_handler*/ ctx[74]),
-    					listen_dev(input9, "input", /*updateRobotPosition*/ ctx[31], false, false, false, false)
+    					listen_dev(svg0, "click", /*showCodeWindow*/ ctx[33], false, false, false, false),
+    					listen_dev(button0, "click", /*importControlPoints*/ ctx[24], false, false, false, false),
+    					listen_dev(button1, "click", /*exportControlPoints*/ ctx[23], false, false, false, false),
+    					listen_dev(select0, "change", /*select0_change_handler*/ ctx[35]),
+    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[36]),
+    					listen_dev(input0, "input", /*input_handler*/ ctx[37], false, false, false, false),
+    					listen_dev(input1, "input", /*input1_input_handler*/ ctx[38]),
+    					listen_dev(input1, "input", /*input_handler_1*/ ctx[39], false, false, false, false),
+    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[44]),
+    					listen_dev(input3, "input", /*input3_input_handler*/ ctx[45]),
+    					listen_dev(input6, "change", /*input6_change_handler*/ ctx[46]),
+    					listen_dev(input7, "change", /*input7_change_handler*/ ctx[47]),
+    					listen_dev(input8, "change", /*input8_change_handler*/ ctx[48]),
+    					listen_dev(select1, "change", /*select1_change_handler*/ ctx[49]),
+    					listen_dev(button2, "click", /*click_handler_5*/ ctx[72], false, false, false, false),
+    					listen_dev(input9, "change", /*input9_change_input_handler*/ ctx[73]),
+    					listen_dev(input9, "input", /*input9_change_input_handler*/ ctx[73]),
+    					listen_dev(input9, "input", /*updateRobotPosition*/ ctx[30], false, false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*robotUnits*/ 4) {
-    				select_option(select0, /*robotUnits*/ ctx[2]);
+    			if (dirty[0] & /*robotUnits*/ 16) {
+    				select_option(select0, /*robotUnits*/ ctx[4]);
     			}
 
-    			if (dirty[0] & /*displayLength*/ 131072 && to_number(input0.value) !== /*displayLength*/ ctx[17]) {
-    				set_input_value(input0, /*displayLength*/ ctx[17]);
+    			if (dirty[0] & /*displayLength*/ 262144 && to_number(input0.value) !== /*displayLength*/ ctx[18]) {
+    				set_input_value(input0, /*displayLength*/ ctx[18]);
     			}
 
-    			if (dirty[0] & /*displayWidth*/ 65536 && to_number(input1.value) !== /*displayWidth*/ ctx[16]) {
-    				set_input_value(input1, /*displayWidth*/ ctx[16]);
+    			if (dirty[0] & /*displayWidth*/ 131072 && to_number(input1.value) !== /*displayWidth*/ ctx[17]) {
+    				set_input_value(input1, /*displayWidth*/ ctx[17]);
     			}
 
-    			if (/*$paths*/ ctx[7].length > 0) {
+    			if (/*$paths*/ ctx[9].length > 0) {
     				if (if_block0) {
     					if_block0.p(ctx, dirty);
     				} else {
-    					if_block0 = create_if_block_15(ctx);
+    					if_block0 = create_if_block_14(ctx);
     					if_block0.c();
     					if_block0.m(div5, null);
     				}
@@ -3277,11 +3277,11 @@ var app = (function () {
     				if_block0 = null;
     			}
 
-    			if (/*$paths*/ ctx[7].length > 0) {
+    			if (/*$paths*/ ctx[9].length > 0) {
     				if (if_block1) {
     					if_block1.p(ctx, dirty);
     				} else {
-    					if_block1 = create_if_block_14(ctx);
+    					if_block1 = create_if_block_13(ctx);
     					if_block1.c();
     					if_block1.m(div6, null);
     				}
@@ -3290,50 +3290,50 @@ var app = (function () {
     				if_block1 = null;
     			}
 
-    			if (dirty[0] & /*robotX*/ 512 && to_number(input2.value) !== /*robotX*/ ctx[9]) {
-    				set_input_value(input2, /*robotX*/ ctx[9]);
+    			if (dirty[0] & /*robotX*/ 2048 && to_number(input2.value) !== /*robotX*/ ctx[11]) {
+    				set_input_value(input2, /*robotX*/ ctx[11]);
     			}
 
-    			if (dirty[0] & /*robotY*/ 1024 && to_number(input3.value) !== /*robotY*/ ctx[10]) {
-    				set_input_value(input3, /*robotY*/ ctx[10]);
+    			if (dirty[0] & /*robotY*/ 4096 && to_number(input3.value) !== /*robotY*/ ctx[12]) {
+    				set_input_value(input3, /*robotY*/ ctx[12]);
     			}
 
-    			if (dirty[0] & /*robotLiveAngle*/ 8192 && input4_value_value !== (input4_value_value = Math.round(/*robotLiveAngle*/ ctx[13])) && input4.value !== input4_value_value) {
+    			if (dirty[0] & /*robotLiveAngle*/ 32768 && input4_value_value !== (input4_value_value = Math.round(/*robotLiveAngle*/ ctx[15])) && input4.value !== input4_value_value) {
     				prop_dev(input4, "value", input4_value_value);
     			}
 
-    			if (dirty[0] & /*currentPathIndex*/ 2048 && input5_value_value !== (input5_value_value = /*currentPathIndex*/ ctx[11] + 1) && input5.value !== input5_value_value) {
+    			if (dirty[0] & /*currentPathIndex*/ 8192 && input5_value_value !== (input5_value_value = /*currentPathIndex*/ ctx[13] + 1) && input5.value !== input5_value_value) {
     				prop_dev(input5, "value", input5_value_value);
     			}
 
-    			if (dirty[0] & /*shouldShowHitbox*/ 32768) {
-    				input6.checked = /*shouldShowHitbox*/ ctx[15];
+    			if (dirty[0] & /*$shouldShowHitbox*/ 524288) {
+    				input6.checked = /*$shouldShowHitbox*/ ctx[19];
     			}
 
-    			if (dirty[0] & /*shouldRepeatPath*/ 4096) {
-    				input7.checked = /*shouldRepeatPath*/ ctx[12];
+    			if (dirty[0] & /*shouldRepeatPath*/ 16384) {
+    				input7.checked = /*shouldRepeatPath*/ ctx[14];
     			}
 
-    			if (dirty[0] & /*autoLinkPaths*/ 16384) {
-    				input8.checked = /*autoLinkPaths*/ ctx[14];
+    			if (dirty[0] & /*autoLinkPaths*/ 65536) {
+    				input8.checked = /*autoLinkPaths*/ ctx[16];
     			}
 
-    			if (dirty[0] & /*rotationUnits*/ 8) {
-    				select_option(select1, /*rotationUnits*/ ctx[3]);
+    			if (dirty[0] & /*rotationUnits*/ 32) {
+    				select_option(select1, /*rotationUnits*/ ctx[5]);
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				each_value_5 = /*$paths*/ ctx[7];
-    				validate_each_argument(each_value_5);
+    			if (dirty[0] & /*$paths*/ 512) {
+    				each_value_4 = /*$paths*/ ctx[9];
+    				validate_each_argument(each_value_4);
     				let i;
 
-    				for (i = 0; i < each_value_5.length; i += 1) {
-    					const child_ctx = get_each_context_5(ctx, each_value_5, i);
+    				for (i = 0; i < each_value_4.length; i += 1) {
+    					const child_ctx = get_each_context_4(ctx, each_value_4, i);
 
     					if (each_blocks_2[i]) {
     						each_blocks_2[i].p(child_ctx, dirty);
     					} else {
-    						each_blocks_2[i] = create_each_block_5(child_ctx);
+    						each_blocks_2[i] = create_each_block_4(child_ctx);
     						each_blocks_2[i].c();
     						each_blocks_2[i].m(div22, t60);
     					}
@@ -3343,14 +3343,14 @@ var app = (function () {
     					each_blocks_2[i].d(1);
     				}
 
-    				each_blocks_2.length = each_value_5.length;
+    				each_blocks_2.length = each_value_4.length;
     			}
 
-    			if (/*$paths*/ ctx[7].length > 0) {
+    			if (/*$paths*/ ctx[9].length > 0) {
     				if (if_block2) {
     					if_block2.p(ctx, dirty);
     				} else {
-    					if_block2 = create_if_block_13(ctx);
+    					if_block2 = create_if_block_12(ctx);
     					if_block2.c();
     					if_block2.m(div22, t61);
     				}
@@ -3359,21 +3359,21 @@ var app = (function () {
     				if_block2 = null;
     			}
 
-    			if (/*shouldShowHitbox*/ ctx[15]) {
+    			if (/*$shouldShowHitbox*/ ctx[19]) {
     				if (if_block3) {
     					if_block3.p(ctx, dirty);
     				} else {
-    					if_block3 = create_if_block_9(ctx);
+    					if_block3 = create_if_block_10(ctx);
     					if_block3.c();
-    					if_block3.m(div22, t62);
+    					if_block3.m(svg1, if_block3_anchor);
     				}
     			} else if (if_block3) {
     				if_block3.d(1);
     				if_block3 = null;
     			}
 
-    			if (dirty[0] & /*$paths*/ 128) {
-    				each_value_2 = /*$paths*/ ctx[7];
+    			if (dirty[0] & /*offsetPaths*/ 256) {
+    				each_value_2 = /*offsetPaths*/ ctx[8];
     				validate_each_argument(each_value_2);
     				let i;
 
@@ -3396,8 +3396,8 @@ var app = (function () {
     				each_blocks_1.length = each_value_2.length;
     			}
 
-    			if (dirty[0] & /*$paths, generateBezierCurve, paths, addControlPointToPathWithIndex, deletePath, updatePathColor*/ 948961408 | dirty[1] & /*updateRobotPosition, checkAutoLinkControlPoints*/ 5) {
-    				each_value = /*$paths*/ ctx[7];
+    			if (dirty[0] & /*$paths, generateBezierCurve, paths, updateRobotPosition, addControlPointToPathWithIndex, deletePath, updatePathColor*/ 1547698690 | dirty[1] & /*checkAutoLinkControlPoints*/ 2) {
+    				each_value = /*$paths*/ ctx[9];
     				validate_each_argument(each_value);
     				let i;
 
@@ -3409,7 +3409,7 @@ var app = (function () {
     					} else {
     						each_blocks[i] = create_each_block(child_ctx);
     						each_blocks[i].c();
-    						each_blocks[i].m(div23, t64);
+    						each_blocks[i].m(div23, t63);
     					}
     				}
 
@@ -3432,8 +3432,8 @@ var app = (function () {
     				}
     			}
 
-    			if (dirty[0] & /*linearScrubValue*/ 32) {
-    				set_input_value(input9, /*linearScrubValue*/ ctx[5]);
+    			if (dirty[0] & /*linearScrubValue*/ 128) {
+    				set_input_value(input9, /*linearScrubValue*/ ctx[7]);
     			}
     		},
     		i: noop,
@@ -3464,15 +3464,6 @@ var app = (function () {
     	return block;
     }
 
-    const hitboxOffset = 5;
-
-    function getRandomBrightColor() {
-    	const r = Math.floor(Math.random() * 128 + 128);
-    	const g = Math.floor(Math.random() * 128 + 128);
-    	const b = Math.floor(Math.random() * 128 + 128);
-    	return `rgb(${r}, ${g}, ${b})`;
-    }
-
     function calculateBezier(points, steps) {
     	let curve = [];
 
@@ -3497,87 +3488,30 @@ var app = (function () {
     	return deCasteljau(newPoints, t);
     }
 
-    function bernsteinPolynomial(n, i, t) {
-    	return factorial(n) / (factorial(i) * factorial(n - i)) * t ** i * (1 - t) ** (n - i);
-    }
-
-    function getPointAt(t, p0, p1, p2) {
-    	const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x;
-    	const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y;
-    	return { x, y };
-    }
-
-    function getDerivativeAt(t, p0, p1, p2) {
-    	const d1 = {
-    		x: 2 * (p1.x - p0.x),
-    		y: 2 * (p1.y - p0.y)
-    	};
-
-    	const d2 = {
-    		x: 2 * (p2.x - p1.x),
-    		y: 2 * (p2.y - p1.y)
-    	};
-
-    	const x = (1 - t) * d1.x + t * d2.x;
-    	const y = (1 - t) * d1.y + t * d2.y;
-    	return { x, y };
-    }
-
-    function getNormalAt(t, p0, p1, p2) {
-    	const d = getDerivativeAt(t, p0, p1, p2);
-    	const length = Math.sqrt(d.x * d.x + d.y * d.y);
-    	return { x: -d.y / length, y: d.x / length }; // Perpendicular vector
-    }
-
-    function getOffsetPointAt(t, p0, p1, p2, offset) {
-    	const point = getPointAt(t, p0, p1, p2);
-    	const normal = getNormalAt(t, p0, p1, p2);
-
-    	return {
-    		left: {
-    			x: point.x + normal.x * offset,
-    			y: point.y + normal.y * offset
-    		},
-    		right: {
-    			x: point.x - normal.x * offset,
-    			y: point.y - normal.y * offset
-    		}
-    	};
-    }
-
-    // Generate two offset curves
-    function generateHitboxPath(p0, p1, p2, offset) {
-    	const leftPath = [];
-    	const rightPath = [];
-
-    	for (let t = 0; t <= 1; t += 0.01) {
-    		const offsetPoints = getOffsetPointAt(t, p0, p1, p2, offset);
-    		leftPath.push(offsetPoints.left);
-    		rightPath.push(offsetPoints.right);
-    	}
-
-    	return { leftPath, rightPath };
-    }
-
-    const func = point => `${point.x},${144 - point.y}`;
+    const func = p => `${p.x},${144 - p.y}`;
+    const func_1 = p => `${p.x},${144 - p.y}`;
+    const func_2 = p => `${p.x},${144 - p.y}`;
+    const func_3 = p => `${p.x},${144 - p.y}`;
+    const func_4 = p => `${p.x},${144 - p.y}`;
 
     function instance($$self, $$props, $$invalidate) {
     	let displayLength;
     	let displayWidth;
     	let animTime;
-    	let $paths;
+
+    	let $paths,
+    		$$unsubscribe_paths = noop,
+    		$$subscribe_paths = () => ($$unsubscribe_paths(), $$unsubscribe_paths = subscribe(paths, $$value => $$invalidate(9, $paths = $$value)), paths);
+
+    	let $shouldShowHitbox,
+    		$$unsubscribe_shouldShowHitbox = noop,
+    		$$subscribe_shouldShowHitbox = () => ($$unsubscribe_shouldShowHitbox(), $$unsubscribe_shouldShowHitbox = subscribe(shouldShowHitbox, $$value => $$invalidate(19, $shouldShowHitbox = $$value)), shouldShowHitbox);
+
+    	$$self.$$.on_destroy.push(() => $$unsubscribe_paths());
+    	$$self.$$.on_destroy.push(() => $$unsubscribe_shouldShowHitbox());
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots('App', slots, []);
-    	let controlPoints = writable([]);
-    	let paths = writable([]);
-    	validate_store(paths, 'paths');
-    	component_subscribe($$self, paths, value => $$invalidate(7, $paths = value));
-    	let x = 0;
-    	let y = 0;
-
-    	// Robot dimensions in inches
     	let robotLength = 18;
-
     	let robotWidth = 18;
 
     	// Unit system
@@ -3588,12 +3522,12 @@ var app = (function () {
     	// Functions to update robotLength and robotWidth
     	function updateRobotLength(value) {
     		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    		$$invalidate(0, robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+    		$$invalidate(2, robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
     	}
 
     	function updateRobotWidth(value) {
     		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    		$$invalidate(1, robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+    		$$invalidate(3, robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
     	}
 
     	function generateBezierCurve(pathId) {
@@ -3648,14 +3582,7 @@ var app = (function () {
 
     	function addPath() {
     		paths.update(paths => {
-    			const newPath = {
-    				id: paths.length,
-    				controlPoints: [],
-    				bezierCurvePoints: [],
-    				color: getRandomBrightColor(),
-    				robotHeading: 'constant', // default heading
-    				
-    			};
+    			const newPath = new Path(paths.length);
 
     			if (paths.length > 0) {
     				const lastPath = paths[paths.length - 1];
@@ -3674,30 +3601,45 @@ var app = (function () {
 
     					newPath.controlPoints.push({ x, y });
     				}
-    			} else if (paths.length === 0) {
+    			} else {
     				newPath.controlPoints.push({ x: 12, y: 96 });
     				newPath.controlPoints.push({ x: 36, y: 96 });
     			}
 
+    			newPath.bezierCurvePoints = newPath.calculateBezier();
     			return [...paths, newPath];
     		});
     	}
 
+    	onMount(() => {
+    		paths.update(p => {
+    			if (p.length === 0) {
+    				addPath();
+    			}
+
+    			return p;
+    		});
+    	});
+
     	function addControlPointToPathWithIndex(pathId, index) {
     		paths.update(paths => {
     			const path = paths.find(p => p.id === pathId);
-    			console.log(path.controlPoints);
 
     			if (path) {
     				const angle = Math.random() * 2 * Math.PI;
     				const distance = 50;
-    				$$invalidate(18, x = 72 + Math.cos(angle) * distance);
-    				$$invalidate(19, y = 72 + Math.sin(angle) * distance);
-    				path.controlPoints.splice(index, 0, { x, y });
-    				path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
+    				const x = 72 + Math.cos(angle) * distance;
+    				const y = 72 + Math.sin(angle) * distance;
+
+    				// Ensure there are at least 2 points before inserting
+    				if (path.controlPoints.length > 1) {
+    					const insertIndex = path.controlPoints.length - 1; // End-1 index
+    					path.controlPoints.splice(insertIndex, 0, { x, y }); // 🔹 Insert at End-1
+    				} else {
+    					path.controlPoints.push({ x, y }); // Default to normal push if too few points
+    				}
     			}
 
-    			console.log(path.controlPoints);
     			return paths;
     		});
     	}
@@ -3707,7 +3649,7 @@ var app = (function () {
     			const path = paths.find(p => p.id === pathId);
 
     			if (path) {
-    				path.color = color;
+    				path.setColor(color);
     			}
 
     			return paths;
@@ -3760,9 +3702,9 @@ var app = (function () {
 
     	function playPath() {
     		if (isPlaying) return;
-    		$$invalidate(4, isPlaying = true);
+    		$$invalidate(6, isPlaying = true);
 
-    		$$invalidate(11, currentPathIndex = isStartingFromBeginning
+    		$$invalidate(13, currentPathIndex = isStartingFromBeginning
     		? 0
     		: Math.floor(scrubValue / 100 * $paths.length));
 
@@ -3777,10 +3719,10 @@ var app = (function () {
     		intervalId = setInterval(
     			() => {
     				elapsedTime = (Date.now() - pathStartTime) / 1000;
-    				$$invalidate(8, path = $paths[currentPathIndex]);
+    				$$invalidate(10, path = $paths[currentPathIndex]);
     				pathAnimTime = animTime / $paths.length;
     				progress = elapsedTime / pathAnimTime;
-    				$$invalidate(5, linearScrubValue = (currentPathIndex + progress) / $paths.length * 100);
+    				$$invalidate(7, linearScrubValue = (currentPathIndex + progress) / $paths.length * 100);
 
     				if (progress < 0.5) {
     					progress = 2 * progress * progress;
@@ -3794,12 +3736,12 @@ var app = (function () {
     				if (elapsedTime >= pathAnimTime) {
     					if (currentPathIndex + 1 >= $paths.length) {
     						if (shouldRepeatPath) {
-    							$$invalidate(11, currentPathIndex = 0);
+    							$$invalidate(13, currentPathIndex = 0);
     						} else {
     							pausePath();
     						}
     					} else {
-    						$$invalidate(11, currentPathIndex++, currentPathIndex);
+    						$$invalidate(13, currentPathIndex++, currentPathIndex);
     					}
 
     					pathStartTime = Date.now();
@@ -3825,8 +3767,8 @@ var app = (function () {
     				const point = path.bezierCurvePoints[pointIndex];
 
     				if (point) {
-    					$$invalidate(9, robotX = point.x);
-    					$$invalidate(10, robotY = point.y);
+    					$$invalidate(11, robotX = point.x);
+    					$$invalidate(12, robotY = point.y);
     					const robotElement = document.getElementById('robot');
 
     					if (robotElement) {
@@ -3841,7 +3783,7 @@ var app = (function () {
 
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(13, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(15, robotLiveAngle = rotationUnits === 'degrees'
     							? angle * (180 / Math.PI)
     							: angle);
     						} else if (path.robotHeading === 'linear') {
@@ -3850,14 +3792,14 @@ var app = (function () {
     							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(13, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(15, robotLiveAngle = rotationUnits === 'degrees'
     							? angle * (180 / Math.PI)
     							: angle);
     						} else if (path.robotHeading === 'constant') {
     							const angle = path.constantAngle || 0;
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(13, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(15, robotLiveAngle = rotationUnits === 'degrees'
     							? -angle * (180 / Math.PI)
     							: -angle);
     						}
@@ -3872,14 +3814,14 @@ var app = (function () {
     	}
 
     	function pausePath() {
-    		$$invalidate(4, isPlaying = false);
+    		$$invalidate(6, isPlaying = false);
 
     		if (intervalId) {
     			clearInterval(intervalId);
     			intervalId = null;
     		}
 
-    		$$invalidate(35, wasPaused = true);
+    		$$invalidate(34, wasPaused = true);
     		isStartingFromBeginning = false;
     	}
 
@@ -4037,17 +3979,14 @@ var app = (function () {
     		codeWindow.document.close();
     	}
 
-    	let shouldShowHitbox = false;
-
-    	// Usage Example:
-    	const p0 = { x: 10, y: 20 };
-
-    	const p1 = { x: 30, y: 60 };
-    	const p2 = { x: 50, y: 20 };
-    	const hitbox = generateHitboxPath(p0, p1, p2, hitboxOffset);
-    	console.log(hitbox.leftPath, hitbox.rightPath); // Use this in SVG rendering
+    	let { shouldShowHitbox = writable(false) } = $$props;
+    	validate_store(shouldShowHitbox, 'shouldShowHitbox');
+    	$$subscribe_shouldShowHitbox();
+    	let { paths = writable([]) } = $$props;
+    	validate_store(paths, 'paths');
+    	$$subscribe_paths();
     	let offsetPaths = [];
-    	const writable_props = [];
+    	const writable_props = ['shouldShowHitbox', 'paths'];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console_1.warn(`<App> was created with unknown prop '${key}'`);
@@ -4055,19 +3994,19 @@ var app = (function () {
 
     	function select0_change_handler() {
     		robotUnits = select_value(this);
-    		$$invalidate(2, robotUnits);
+    		$$invalidate(4, robotUnits);
     	}
 
     	function input0_input_handler() {
     		displayLength = to_number(this.value);
-    		(($$invalidate(17, displayLength), $$invalidate(2, robotUnits)), $$invalidate(0, robotLength));
+    		(($$invalidate(18, displayLength), $$invalidate(4, robotUnits)), $$invalidate(2, robotLength));
     	}
 
     	const input_handler = e => updateRobotLength(parseFloat(e.target.value));
 
     	function input1_input_handler() {
     		displayWidth = to_number(this.value);
-    		(($$invalidate(16, displayWidth), $$invalidate(2, robotUnits)), $$invalidate(1, robotWidth));
+    		(($$invalidate(17, displayWidth), $$invalidate(4, robotUnits)), $$invalidate(3, robotWidth));
     	}
 
     	const input_handler_1 = e => updateRobotWidth(parseFloat(e.target.value));
@@ -4098,32 +4037,32 @@ var app = (function () {
 
     	function input2_input_handler() {
     		robotX = to_number(this.value);
-    		$$invalidate(9, robotX);
+    		$$invalidate(11, robotX);
     	}
 
     	function input3_input_handler() {
     		robotY = to_number(this.value);
-    		$$invalidate(10, robotY);
+    		$$invalidate(12, robotY);
     	}
 
     	function input6_change_handler() {
-    		shouldShowHitbox = this.checked;
-    		$$invalidate(15, shouldShowHitbox);
+    		$shouldShowHitbox = this.checked;
+    		shouldShowHitbox.set($shouldShowHitbox);
     	}
 
     	function input7_change_handler() {
     		shouldRepeatPath = this.checked;
-    		$$invalidate(12, shouldRepeatPath);
+    		$$invalidate(14, shouldRepeatPath);
     	}
 
     	function input8_change_handler() {
     		autoLinkPaths = this.checked;
-    		$$invalidate(14, autoLinkPaths);
+    		$$invalidate(16, autoLinkPaths);
     	}
 
     	function select1_change_handler() {
     		rotationUnits = select_value(this);
-    		$$invalidate(3, rotationUnits);
+    		$$invalidate(5, rotationUnits);
     	}
 
     	const click_handler = path => {
@@ -4237,23 +4176,26 @@ var app = (function () {
 
     	function input9_change_input_handler() {
     		linearScrubValue = to_number(this.value);
-    		$$invalidate(5, linearScrubValue);
+    		$$invalidate(7, linearScrubValue);
     	}
 
+    	$$self.$$set = $$props => {
+    		if ('shouldShowHitbox' in $$props) $$subscribe_shouldShowHitbox($$invalidate(0, shouldShowHitbox = $$props.shouldShowHitbox));
+    		if ('paths' in $$props) $$subscribe_paths($$invalidate(1, paths = $$props.paths));
+    	};
+
     	$$self.$capture_state = () => ({
-    		linear: identity,
+    		onMount,
     		writable,
-    		controlPoints,
-    		paths,
-    		x,
-    		y,
+    		Path,
+    		generateHitboxPath,
+    		getPointAt,
     		robotLength,
     		robotWidth,
     		robotUnits,
     		rotationUnits,
     		updateRobotLength,
     		updateRobotWidth,
-    		getRandomBrightColor,
     		generateBezierCurve,
     		calculateBezier,
     		deCasteljau,
@@ -4288,57 +4230,45 @@ var app = (function () {
     		checkAutoLinkControlPoints,
     		showCodeWindow,
     		shouldShowHitbox,
-    		bernsteinPolynomial,
-    		getPointAt,
-    		getDerivativeAt,
-    		getNormalAt,
-    		getOffsetPointAt,
-    		generateHitboxPath,
-    		p0,
-    		p1,
-    		p2,
-    		hitboxOffset,
-    		hitbox,
+    		paths,
     		offsetPaths,
     		animTime,
     		displayWidth,
     		displayLength,
-    		$paths
+    		$paths,
+    		$shouldShowHitbox
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ('controlPoints' in $$props) controlPoints = $$props.controlPoints;
-    		if ('paths' in $$props) $$invalidate(20, paths = $$props.paths);
-    		if ('x' in $$props) $$invalidate(18, x = $$props.x);
-    		if ('y' in $$props) $$invalidate(19, y = $$props.y);
-    		if ('robotLength' in $$props) $$invalidate(0, robotLength = $$props.robotLength);
-    		if ('robotWidth' in $$props) $$invalidate(1, robotWidth = $$props.robotWidth);
-    		if ('robotUnits' in $$props) $$invalidate(2, robotUnits = $$props.robotUnits);
-    		if ('rotationUnits' in $$props) $$invalidate(3, rotationUnits = $$props.rotationUnits);
+    		if ('robotLength' in $$props) $$invalidate(2, robotLength = $$props.robotLength);
+    		if ('robotWidth' in $$props) $$invalidate(3, robotWidth = $$props.robotWidth);
+    		if ('robotUnits' in $$props) $$invalidate(4, robotUnits = $$props.robotUnits);
+    		if ('rotationUnits' in $$props) $$invalidate(5, rotationUnits = $$props.rotationUnits);
     		if ('scrubValue' in $$props) scrubValue = $$props.scrubValue;
-    		if ('robotX' in $$props) $$invalidate(9, robotX = $$props.robotX);
-    		if ('robotY' in $$props) $$invalidate(10, robotY = $$props.robotY);
-    		if ('isPlaying' in $$props) $$invalidate(4, isPlaying = $$props.isPlaying);
-    		if ('wasPaused' in $$props) $$invalidate(35, wasPaused = $$props.wasPaused);
+    		if ('robotX' in $$props) $$invalidate(11, robotX = $$props.robotX);
+    		if ('robotY' in $$props) $$invalidate(12, robotY = $$props.robotY);
+    		if ('isPlaying' in $$props) $$invalidate(6, isPlaying = $$props.isPlaying);
+    		if ('wasPaused' in $$props) $$invalidate(34, wasPaused = $$props.wasPaused);
     		if ('isStartingFromBeginning' in $$props) isStartingFromBeginning = $$props.isStartingFromBeginning;
     		if ('intervalId' in $$props) intervalId = $$props.intervalId;
-    		if ('animInterval' in $$props) $$invalidate(84, animInterval = $$props.animInterval);
+    		if ('animInterval' in $$props) $$invalidate(82, animInterval = $$props.animInterval);
     		if ('progress' in $$props) progress = $$props.progress;
     		if ('elapsedTime' in $$props) elapsedTime = $$props.elapsedTime;
-    		if ('path' in $$props) $$invalidate(8, path = $$props.path);
+    		if ('path' in $$props) $$invalidate(10, path = $$props.path);
     		if ('pathAnimTime' in $$props) pathAnimTime = $$props.pathAnimTime;
-    		if ('linearScrubValue' in $$props) $$invalidate(5, linearScrubValue = $$props.linearScrubValue);
-    		if ('motionBlurAmount' in $$props) $$invalidate(85, motionBlurAmount = $$props.motionBlurAmount);
-    		if ('currentPathIndex' in $$props) $$invalidate(11, currentPathIndex = $$props.currentPathIndex);
+    		if ('linearScrubValue' in $$props) $$invalidate(7, linearScrubValue = $$props.linearScrubValue);
+    		if ('motionBlurAmount' in $$props) $$invalidate(83, motionBlurAmount = $$props.motionBlurAmount);
+    		if ('currentPathIndex' in $$props) $$invalidate(13, currentPathIndex = $$props.currentPathIndex);
     		if ('pathStartTime' in $$props) pathStartTime = $$props.pathStartTime;
-    		if ('shouldRepeatPath' in $$props) $$invalidate(12, shouldRepeatPath = $$props.shouldRepeatPath);
-    		if ('robotLiveAngle' in $$props) $$invalidate(13, robotLiveAngle = $$props.robotLiveAngle);
-    		if ('autoLinkPaths' in $$props) $$invalidate(14, autoLinkPaths = $$props.autoLinkPaths);
-    		if ('shouldShowHitbox' in $$props) $$invalidate(15, shouldShowHitbox = $$props.shouldShowHitbox);
-    		if ('offsetPaths' in $$props) $$invalidate(6, offsetPaths = $$props.offsetPaths);
+    		if ('shouldRepeatPath' in $$props) $$invalidate(14, shouldRepeatPath = $$props.shouldRepeatPath);
+    		if ('robotLiveAngle' in $$props) $$invalidate(15, robotLiveAngle = $$props.robotLiveAngle);
+    		if ('autoLinkPaths' in $$props) $$invalidate(16, autoLinkPaths = $$props.autoLinkPaths);
+    		if ('shouldShowHitbox' in $$props) $$subscribe_shouldShowHitbox($$invalidate(0, shouldShowHitbox = $$props.shouldShowHitbox));
+    		if ('paths' in $$props) $$subscribe_paths($$invalidate(1, paths = $$props.paths));
+    		if ('offsetPaths' in $$props) $$invalidate(8, offsetPaths = $$props.offsetPaths);
     		if ('animTime' in $$props) animTime = $$props.animTime;
-    		if ('displayWidth' in $$props) $$invalidate(16, displayWidth = $$props.displayWidth);
-    		if ('displayLength' in $$props) $$invalidate(17, displayLength = $$props.displayLength);
+    		if ('displayWidth' in $$props) $$invalidate(17, displayWidth = $$props.displayWidth);
+    		if ('displayLength' in $$props) $$invalidate(18, displayLength = $$props.displayLength);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -4346,18 +4276,18 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty[0] & /*robotUnits, robotLength*/ 5) {
+    		if ($$self.$$.dirty[0] & /*robotUnits, robotLength*/ 20) {
     			// Display dimensions (computed based on robotUnits)
-    			$$invalidate(17, displayLength = parseFloat((robotUnits === 'inches'
+    			$$invalidate(18, displayLength = parseFloat((robotUnits === 'inches'
     			? robotLength
     			: robotLength * 2.54).toFixed(2)));
     		}
 
-    		if ($$self.$$.dirty[0] & /*robotUnits, robotWidth*/ 6) {
-    			$$invalidate(16, displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2)));
+    		if ($$self.$$.dirty[0] & /*robotUnits, robotWidth*/ 24) {
+    			$$invalidate(17, displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2)));
     		}
 
-    		if ($$self.$$.dirty[0] & /*rotationUnits, $paths*/ 136) {
+    		if ($$self.$$.dirty[0] & /*rotationUnits, $paths*/ 544) {
     			{
     				const angleConversionFactor = rotationUnits === 'degrees' ? Math.PI / 180 : 1;
 
@@ -4372,11 +4302,50 @@ var app = (function () {
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*$paths*/ 128) {
+    		if ($$self.$$.dirty[0] & /*$paths, robotWidth*/ 520) {
+    			{
+    				$$invalidate(8, offsetPaths = $paths.map(path => ({
+    					left: [],
+    					right: [],
+    					main: [],
+    					color: path.color,
+    					controlPoints: path.controlPoints
+    				})));
+
+    				$paths.forEach((path, pathIndex) => {
+    					if (path.controlPoints.length >= 2) {
+    						// ✅ Now allows both linear & Bézier paths
+    						let mainPath = [];
+
+    						// ✅ Generate the hitbox ONCE
+    						const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, robotWidth);
+
+    						for (let t = 0; t <= 1; t += 0.01) {
+    							const mainPoint = getPointAt(t, path.controlPoints);
+    							mainPath.push(mainPoint);
+    						}
+
+    						// ✅ Assign paths properly
+    						$$invalidate(8, offsetPaths[pathIndex].main = mainPath, offsetPaths);
+
+    						$$invalidate(8, offsetPaths[pathIndex].left = leftPath, offsetPaths);
+    						$$invalidate(8, offsetPaths[pathIndex].right = rightPath, offsetPaths);
+    					}
+    				});
+    			}
+    		}
+
+    		if ($$self.$$.dirty[0] & /*offsetPaths*/ 256) {
+    			{
+    				console.log("offsetPaths:", JSON.stringify(offsetPaths, null, 2));
+    			}
+    		}
+
+    		if ($$self.$$.dirty[0] & /*$paths*/ 512) {
     			animTime = 1.56 * $paths.length;
     		}
 
-    		if ($$self.$$.dirty[0] & /*isPlaying, $paths, linearScrubValue*/ 176 | $$self.$$.dirty[1] & /*wasPaused*/ 16) {
+    		if ($$self.$$.dirty[0] & /*isPlaying, $paths, linearScrubValue*/ 704 | $$self.$$.dirty[1] & /*wasPaused*/ 8) {
     			{
     				if (!isPlaying && wasPaused) {
     					const totalPaths = $paths.length;
@@ -4388,14 +4357,14 @@ var app = (function () {
     					: -1 + (4 - 2 * pathProgress) * pathProgress;
 
     					scrubValue = (pathIndex + adjustedProgress) / totalPaths * 100;
-    					$$invalidate(11, currentPathIndex = pathIndex);
+    					$$invalidate(13, currentPathIndex = pathIndex);
     					progress = adjustedProgress;
     					updateRobotPosition();
     				}
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*isPlaying*/ 16) {
+    		if ($$self.$$.dirty[0] & /*isPlaying*/ 64) {
     			{
     				const robotElement = document.getElementById('robot');
 
@@ -4408,40 +4377,6 @@ var app = (function () {
     				}
     			}
     		}
-
-    		if ($$self.$$.dirty[0] & /*$paths, offsetPaths*/ 192) {
-    			{
-    				$$invalidate(6, offsetPaths = $paths.map(path => ({
-    					left: [],
-    					right: [],
-    					main: [],
-    					color: path.color,
-    					controlPoints: path.controlPoints
-    				})));
-
-    				$paths.forEach((path, pathIndex) => {
-    					if (path.controlPoints.length >= 2) {
-    						for (let t = 0; t <= 1; t += 0.01) {
-    							let leftPoint, rightPoint, mainPoint;
-
-    							for (let i = 0; i < path.controlPoints.length - 1; i++) {
-    								if (i < path.controlPoints.length - 2) {
-    									mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2]);
-    									({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2], 5));
-    								} else {
-    									mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1]);
-    									({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1], 5));
-    								}
-
-    								offsetPaths[pathIndex].left.push(leftPoint);
-    								offsetPaths[pathIndex].right.push(rightPoint);
-    								offsetPaths[pathIndex].main.push(mainPoint);
-    							}
-    						}
-    					}
-    				});
-    			}
-    		}
     	};
 
     	{
@@ -4451,6 +4386,8 @@ var app = (function () {
     	}
 
     	return [
+    		shouldShowHitbox,
+    		paths,
     		robotLength,
     		robotWidth,
     		robotUnits,
@@ -4466,12 +4403,9 @@ var app = (function () {
     		shouldRepeatPath,
     		robotLiveAngle,
     		autoLinkPaths,
-    		shouldShowHitbox,
     		displayWidth,
     		displayLength,
-    		x,
-    		y,
-    		paths,
+    		$shouldShowHitbox,
     		updateRobotLength,
     		updateRobotWidth,
     		generateBezierCurve,
@@ -4532,7 +4466,7 @@ var app = (function () {
     class App extends SvelteComponentDev {
     	constructor(options) {
     		super(options);
-    		init(this, options, instance, create_fragment, safe_not_equal, {}, null, [-1, -1, -1, -1]);
+    		init(this, options, instance, create_fragment, safe_not_equal, { shouldShowHitbox: 0, paths: 1 }, null, [-1, -1, -1, -1]);
 
     		dispatch_dev("SvelteRegisterComponent", {
     			component: this,
@@ -4540,6 +4474,22 @@ var app = (function () {
     			options,
     			id: create_fragment.name
     		});
+    	}
+
+    	get shouldShowHitbox() {
+    		throw new Error("<App>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
+    	}
+
+    	set shouldShowHitbox(value) {
+    		throw new Error("<App>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
+    	}
+
+    	get paths() {
+    		throw new Error("<App>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
+    	}
+
+    	set paths(value) {
+    		throw new Error("<App>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
     	}
     }
 

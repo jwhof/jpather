@@ -1,14 +1,8 @@
 <script>
-	import { linear } from 'svelte/easing';
-	import { writable } from 'svelte/store';
-	
-	
-	let controlPoints = writable([]);
-	let paths = writable([]);
-  
-	let x = 0;
-	let y = 0;
-  
+import { onMount } from 'svelte';
+import { writable } from 'svelte/store';
+import Path from './utils/Path.js';
+import { generateHitboxPath, getPointAt } from './utils/bezier.js';  
 	// Robot dimensions in inches
 	let robotLength = 18;
 	let robotWidth = 18;
@@ -45,12 +39,12 @@
 		});
 	}
 
-	function getRandomBrightColor() {
-		const r = Math.floor(Math.random() * 128 + 128);
-		const g = Math.floor(Math.random() * 128 + 128);
-		const b = Math.floor(Math.random() * 128 + 128);
-		return `rgb(${r}, ${g}, ${b})`;
-	}
+	$: {
+    console.log("offsetPaths:", JSON.stringify(offsetPaths, null, 2));
+}
+
+
+
   
 	function generateBezierCurve(pathId) {
 		paths.update(paths => {
@@ -121,60 +115,70 @@
 	}
 
 	function addPath() {
-		paths.update(paths => {
-			const newPath = {
-				id: paths.length,
-				controlPoints: [],
-				bezierCurvePoints: [],
-				color: getRandomBrightColor(),
-				robotHeading: 'constant' // default heading
-			};
-			if (paths.length > 0) {
-				const lastPath = paths[paths.length - 1];
-				if (lastPath.controlPoints.length > 0) {
-					const lastControlPoint = lastPath.controlPoints[lastPath.controlPoints.length - 1];
-					const angle = Math.random() * 2 * Math.PI;
-					const distance = 50;
-					const x = 72 + Math.cos(angle) * distance;
-					const y = 72 + Math.sin(angle) * distance;
-					newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y });
-					newPath.controlPoints.push({ x, y });
-				}
-			} else if (paths.length === 0) {
-				newPath.controlPoints.push({ x: 12, y: 96 });
-				newPath.controlPoints.push({ x: 36, y: 96 });
-			}
-			return [...paths, newPath];
+    paths.update(paths => {
+        const newPath = new Path(paths.length);
+        if (paths.length > 0) {
+            const lastPath = paths[paths.length - 1];
+            if (lastPath.controlPoints.length > 0) {
+                const lastControlPoint = lastPath.controlPoints[lastPath.controlPoints.length - 1];
+                const angle = Math.random() * 2 * Math.PI;
+                const distance = 50;
+                const x = 72 + Math.cos(angle) * distance;
+                const y = 72 + Math.sin(angle) * distance;
+                newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y });
+                newPath.controlPoints.push({ x, y });
+            }
+        } else {
+            newPath.controlPoints.push({ x: 12, y: 96 });
+            newPath.controlPoints.push({ x: 36, y: 96 });
+        }
+        newPath.bezierCurvePoints = newPath.calculateBezier();
+        return [...paths, newPath];
 		});
 	}
+
+	onMount(() => {
+		paths.update(p => {
+			if (p.length === 0) {
+				addPath();
+			}
+			return p;
+		});
+	});
+
 
 	function addControlPointToPathWithIndex(pathId, index) {
-		paths.update(paths => {
-			const path = paths.find(p => p.id === pathId);
-			console.log(path.controlPoints);
-			if (path) {
-				const angle = Math.random() * 2 * Math.PI;
-				const distance = 50;
-				x = 72 + Math.cos(angle) * distance;
-				y = 72 + Math.sin(angle) * distance;
-				path.controlPoints.splice(index, 0, { x, y });
-				path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
-			}
-			console.log(path.controlPoints);
+	paths.update(paths => {
+		const path = paths.find(p => p.id === pathId);
+		if (path) {
+			const angle = Math.random() * 2 * Math.PI;
+			const distance = 50;
+			const x = 72 + Math.cos(angle) * distance;
+			const y = 72 + Math.sin(angle) * distance;
 
-			return paths;
-		});
-	}
+			// Ensure there are at least 2 points before inserting
+			if (path.controlPoints.length > 1) {
+				const insertIndex = path.controlPoints.length - 1;  // End-1 index
+				path.controlPoints.splice(insertIndex, 0, { x, y });  // 🔹 Insert at End-1
+			} else {
+				path.controlPoints.push({ x, y }); // Default to normal push if too few points
+			}
+		}
+		return paths;
+	});
+}
+
 
 	function updatePathColor(pathId, color) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
 			if (path) {
-				path.color = color;
+				path.setColor(color);
 			}
 			return paths;
 		});
 	}
+
 
 	function deletePath(pathId) {
 		paths.update(paths => {
@@ -482,100 +486,39 @@
 		codeWindow.document.close();
 	}
 
-	let shouldShowHitbox = false;
+	export let shouldShowHitbox = writable(false);
+    export let paths = writable([]);
 
-	function bernsteinPolynomial(n, i, t) {
-		return (factorial(n) / (factorial(i) * factorial(n - i))) * (t ** i) * ((1 - t) ** (n - i));
-	}
+    let offsetPaths = [];
 
-	function getPointAt(t, p0, p1, p2) {
-    const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x;
-    const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y;
-    return { x, y };
-	}
+$: {
+    offsetPaths = $paths.map(path => ({
+        left: [],
+        right: [],
+        main: [],
+        color: path.color,
+        controlPoints: path.controlPoints,
+    }));
 
-	function getDerivativeAt(t, p0, p1, p2) {
-		const d1 = { x: 2 * (p1.x - p0.x), y: 2 * (p1.y - p0.y) };
-		const d2 = { x: 2 * (p2.x - p1.x), y: 2 * (p2.y - p1.y) };
-		
-		const x = (1 - t) * d1.x + t * d2.x;
-		const y = (1 - t) * d1.y + t * d2.y;
-		return { x, y };
-	}
+    $paths.forEach((path, pathIndex) => {
+        if (path.controlPoints.length >= 2) { // ✅ Now allows both linear & Bézier paths
+            let mainPath = [];
+            
+            // ✅ Generate the hitbox ONCE
+            const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, robotWidth);
 
-	function getNormalAt(t, p0, p1, p2) {
-		const d = getDerivativeAt(t, p0, p1, p2);
-		const length = Math.sqrt(d.x * d.x + d.y * d.y);
-		return { x: -d.y / length, y: d.x / length }; // Perpendicular vector
-	}
+            for (let t = 0; t <= 1; t += 0.01) {
+                const mainPoint = getPointAt(t, path.controlPoints);
+                mainPath.push(mainPoint);
+            }
 
-	function getOffsetPointAt(t, p0, p1, p2, offset) {
-		const point = getPointAt(t, p0, p1, p2);
-		const normal = getNormalAt(t, p0, p1, p2);
-		
-		return {
-			left: { x: point.x + normal.x * offset, y: point.y + normal.y * offset },
-			right: { x: point.x - normal.x * offset, y: point.y - normal.y * offset }
-		};
-	}
-
-	// Generate two offset curves
-	function generateHitboxPath(p0, p1, p2, offset) {
-		const leftPath = [];
-		const rightPath = [];
-
-		for (let t = 0; t <= 1; t += 0.01) {
-			const offsetPoints = getOffsetPointAt(t, p0, p1, p2, offset);
-			leftPath.push(offsetPoints.left);
-			rightPath.push(offsetPoints.right);
-		}
-
-		return { leftPath, rightPath };
-	}
-
-	// Usage Example:
-	const p0 = { x: 10, y: 20 };
-	const p1 = { x: 30, y: 60 };
-	const p2 = { x: 50, y: 20 };
-	const hitboxOffset = 5;
-
-	const hitbox = generateHitboxPath(p0, p1, p2, hitboxOffset);
-	console.log(hitbox.leftPath, hitbox.rightPath); // Use this in SVG rendering
-
-
-	let offsetPaths = [];
-
-	$: {
-		offsetPaths = $paths.map(path => ({
-			left: [],
-			right: [],
-			main: [],
-			color: path.color,
-			controlPoints: path.controlPoints,
-		}));
-
-		$paths.forEach((path, pathIndex) => {
-			if (path.controlPoints.length >= 2) {
-				for (let t = 0; t <= 1; t += 0.01) {
-					let leftPoint, rightPoint, mainPoint;
-
-					for (let i = 0; i < path.controlPoints.length - 1; i++) {
-						if (i < path.controlPoints.length - 2) {
-							mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2]);
-							({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 2], 5));
-						} else {
-							mainPoint = getPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1]);
-							({ left: leftPoint, right: rightPoint } = getOffsetPointAt(t, path.controlPoints[i], path.controlPoints[i + 1], path.controlPoints[i + 1], 5));
-						}
-
-						offsetPaths[pathIndex].left.push(leftPoint);
-						offsetPaths[pathIndex].right.push(rightPoint);
-						offsetPaths[pathIndex].main.push(mainPoint);
-					}
-				}
-			}
-		});
-	}
+            // ✅ Assign paths properly
+            offsetPaths[pathIndex].main = mainPath;
+            offsetPaths[pathIndex].left = leftPath;
+            offsetPaths[pathIndex].right = rightPath;
+        }
+    });
+}
 
 </script>
   
@@ -624,7 +567,7 @@
 		max-height: 80vh;
 		min-width: 40vh;
 		min-height: 40vh;
-		background: url('https://jwhof.github.io/jpather/assets/good-field-image.png') no-repeat center center;
+		background: url('https://jwhof.github.io/jpather/good-field-image.png') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
 	}
@@ -1167,7 +1110,7 @@
 						<h2 id="advanced-options" class="section-title" style="user-select:none;">Advanced Options</h2>
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Show Robot Hitbox: </label>
-							<input id="auto-link-paths" type="checkbox" bind:checked={shouldShowHitbox} />
+							<input id="auto-link-paths" type="checkbox" bind:checked={$shouldShowHitbox} />
 						</div>
 
 						<div class="advanced-options">
@@ -1192,75 +1135,60 @@
 			<div class="field">
 				{#each $paths as path}
 					{#each path.controlPoints as { x, y }}
-					<div class="hover-point">
-						<div class="point" style="left: {x / 144 * 100}%; bottom: {y / 144 * 100}%; background: {path.color};"></div>
-					</div>
+						<div class="hover-point">
+							<div class="point" style="left: {x / 144 * 100}%; bottom: {y / 144 * 100}%; background: {path.color};"></div>
+						</div>
 					{/each}
 				{/each}
-
-				
+			
+				<!-- Display Robot Image -->
 				{#if $paths.length > 0}
-					<img src="./assets/robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
+					<img src="./assets/robot.png" alt="Robot" id="robot"
+						style="
+							width: {robotWidth / 144 * 100}%;
+							height: {robotLength / 144 * 100}%;
+							left: {(robotX / 144) * 100}%;
+							bottom: {(robotY / 144) * 100}%;
+							user-select: none;
+							position: absolute;
+						"
+					/>
 				{/if}
-
-				{#if shouldShowHitbox}
-					<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
-						{#each offsetPaths as path}
-							{#each path.main as point, i}
-								{#if i < path.main.length - 1}
-									<!-- Main Trajectory -->
-									<line
-										x1={point.x} y1={144 - point.y}
-										x2={path.main[i + 1].x} y2={144 - path.main[i + 1].y}
-										
-										stroke="white"
-										opacity=0.3
-										stroke-width="1"
-									/>
-
-									<!-- Left Hitbox (Ensuring proper point connections) -->
-									{#if path.left[i] && path.left[i + 1]}
-										<line
-											x1={path.left[i].x} y1={144 - path.left[i].y}
-											x2={path.left[i + 1].x} y2={144 - path.left[i + 1].y}
-											stroke="white"
-											opacity=0.3
-											stroke-width="1"
-										/>
-									{/if}
-
-									<!-- Right Hitbox -->
-									{#if path.right[i] && path.right[i + 1]}
-										<line
-											x1={path.right[i].x} y1={144 - path.right[i].y}
-											x2={path.right[i + 1].x} y2={144 - path.right[i + 1].y}
-											stroke="white"
-											opacity=0.3
-											stroke-width="1"
-										/>
-									{/if}
-								{/if}
-							{/each}
-						{/each}
-					</svg>
-				{/if}
-
-					
-
+			
 
 				<svg viewBox="0 0 144 144" width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
-					{#each $paths as path}
-						<polyline
-							class="curve"
-							points="{path.bezierCurvePoints.map(point => `${point.x},${144 - (point.y)}`).join(' ')}"
-							style="stroke: {path.color};"
-						/>
+    
+					<!-- Filled Hitbox (Shaded Polygon) -->
+					{#if $shouldShowHitbox}
+						{#each offsetPaths as path}
+							{#if path.left.length > 0 && path.right.length > 0}
+								<polygon 
+									points="{
+										path.left.map(p => `${p.x},${144 - p.y}`).join(' ') + ' ' +
+										path.right.reverse().map(p => `${p.x},${144 - p.y}`).join(' ')
+									}"
+									fill="rgba(255, 255, 255, 0.2)"
+									stroke="none"
+								/>
+								<path d="M {path.left.map(p => `${p.x},${144 - p.y}`).join(' ')}"
+									stroke={path.color} fill="none" stroke-width="1" opacity="0.4" />
+								<path d="M {path.right.map(p => `${p.x},${144 - p.y}`).join(' ')}"
+									stroke={path.color} fill="none" stroke-width="1" opacity="0.4" />
+							{/if}
+						{/each}
+					{/if}
+				
+					<!-- Main Bézier Curve -->
+					{#each offsetPaths as path}
+						{#if path.main.length > 0}
+							<path d="M {path.main.map(p => `${p.x},${144 - p.y}`).join(' ')}"
+								  stroke={path.color} fill="none" stroke-width="1" />
+						{/if}
 					{/each}
+				
 				</svg>
-
-
-					
-
+				
+				
 			</div>
 			
 			<div class="paths">
@@ -1379,9 +1307,5 @@
 				<input type="range" id="scrub" min="0" max="100" step="0.001" bind:value={linearScrubValue} on:input={updateRobotPosition} />
 			</div>
 		</div>
-
-		
-
-
 	</div>
 </div>
