@@ -577,7 +577,7 @@ var app = (function () {
     	return child_ctx;
     }
 
-    // (1124:8) {#if $paths.length > 0}
+    // (1125:8) {#if $paths.length > 0}
     function create_if_block_15(ctx) {
     	let input;
     	let mounted;
@@ -586,10 +586,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-oxdj5w");
+    			attr_dev(input, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "1");
-    			add_location(input, file, 1124, 8, 28804);
+    			add_location(input, file, 1125, 8, 28809);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
@@ -620,14 +620,14 @@ var app = (function () {
     		block,
     		id: create_if_block_15.name,
     		type: "if",
-    		source: "(1124:8) {#if $paths.length > 0}",
+    		source: "(1125:8) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1131:8) {#if $paths.length > 0}
+    // (1132:8) {#if $paths.length > 0}
     function create_if_block_14(ctx) {
     	let input;
     	let mounted;
@@ -636,10 +636,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-oxdj5w");
+    			attr_dev(input, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "1");
-    			add_location(input, file, 1131, 8, 29291);
+    			add_location(input, file, 1132, 8, 29296);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
@@ -670,14 +670,14 @@ var app = (function () {
     		block,
     		id: create_if_block_14.name,
     		type: "if",
-    		source: "(1131:8) {#if $paths.length > 0}",
+    		source: "(1132:8) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1193:5) {#each path.controlPoints as { x, y }}
+    // (1194:5) {#each path.controlPoints as { x, y }}
     function create_each_block_6(ctx) {
     	let div1;
     	let div0;
@@ -686,13 +686,13 @@ var app = (function () {
     		c: function create() {
     			div1 = element("div");
     			div0 = element("div");
-    			attr_dev(div0, "class", "point svelte-oxdj5w");
+    			attr_dev(div0, "class", "point svelte-27ngvs");
     			set_style(div0, "left", /*x*/ ctx[18] / 144 * 100 + "%");
     			set_style(div0, "bottom", /*y*/ ctx[19] / 144 * 100 + "%");
     			set_style(div0, "background", /*path*/ ctx[8].color);
-    			add_location(div0, file, 1194, 6, 32349);
-    			attr_dev(div1, "class", "hover-point svelte-oxdj5w");
-    			add_location(div1, file, 1193, 5, 32317);
+    			add_location(div0, file, 1195, 6, 32370);
+    			attr_dev(div1, "class", "hover-point svelte-27ngvs");
+    			add_location(div1, file, 1194, 5, 32338);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div1, anchor);
@@ -720,14 +720,14 @@ var app = (function () {
     		block,
     		id: create_each_block_6.name,
     		type: "each",
-    		source: "(1193:5) {#each path.controlPoints as { x, y }}",
+    		source: "(1194:5) {#each path.controlPoints as { x, y }}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1192:4) {#each $paths as path}
+    // (1193:4) {#each $paths as path}
     function create_each_block_5(ctx) {
     	let each_1_anchor;
     	let each_value_6 = /*path*/ ctx[8].controlPoints;
@@ -790,14 +790,14 @@ var app = (function () {
     		block,
     		id: create_each_block_5.name,
     		type: "each",
-    		source: "(1192:4) {#each $paths as path}",
+    		source: "(1193:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1201:4) {#if $paths.length > 0}
+    // (1202:4) {#if $paths.length > 0}
     function create_if_block_13(ctx) {
     	let img;
     	let img_src_value;
@@ -805,7 +805,7 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			img = element("img");
-    			if (!src_url_equal(img.src, img_src_value = "./robot.png")) attr_dev(img, "src", img_src_value);
+    			if (!src_url_equal(img.src, img_src_value = "./assets/robot.png")) attr_dev(img, "src", img_src_value);
     			attr_dev(img, "alt", "Robot");
     			attr_dev(img, "id", "robot");
     			set_style(img, "width", /*robotWidth*/ ctx[1] / 144 * 100 + "%");
@@ -813,8 +813,8 @@ var app = (function () {
     			set_style(img, "left", /*robotX*/ ctx[9] / 144 * 100 + "%");
     			set_style(img, "bottom", /*robotY*/ ctx[10] / 144 * 100 + "%");
     			set_style(img, "user-select", "none");
-    			attr_dev(img, "class", "svelte-oxdj5w");
-    			add_location(img, file, 1201, 5, 32535);
+    			attr_dev(img, "class", "svelte-27ngvs");
+    			add_location(img, file, 1202, 5, 32556);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, img, anchor);
@@ -845,14 +845,14 @@ var app = (function () {
     		block,
     		id: create_if_block_13.name,
     		type: "if",
-    		source: "(1201:4) {#if $paths.length > 0}",
+    		source: "(1202:4) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1205:4) {#if shouldShowHitbox}
+    // (1206:4) {#if shouldShowHitbox}
     function create_if_block_9(ctx) {
     	let svg;
     	let each_value_3 = /*offsetPaths*/ ctx[6];
@@ -877,8 +877,8 @@ var app = (function () {
     			set_style(svg, "position", "absolute");
     			set_style(svg, "top", "0");
     			set_style(svg, "left", "0");
-    			attr_dev(svg, "class", "svelte-oxdj5w");
-    			add_location(svg, file, 1205, 5, 32788);
+    			attr_dev(svg, "class", "svelte-27ngvs");
+    			add_location(svg, file, 1206, 5, 32816);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -924,14 +924,14 @@ var app = (function () {
     		block,
     		id: create_if_block_9.name,
     		type: "if",
-    		source: "(1205:4) {#if shouldShowHitbox}",
+    		source: "(1206:4) {#if shouldShowHitbox}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1209:8) {#if i < path.main.length - 1}
+    // (1210:8) {#if i < path.main.length - 1}
     function create_if_block_10(ctx) {
     	let line;
     	let line_x__value;
@@ -957,8 +957,8 @@ var app = (function () {
     			attr_dev(line, "stroke", "white");
     			attr_dev(line, "opacity", "0.3");
     			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-oxdj5w");
-    			add_location(line, file, 1210, 9, 33041);
+    			attr_dev(line, "class", "svelte-27ngvs");
+    			add_location(line, file, 1211, 9, 33069);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, line, anchor);
@@ -1023,14 +1023,14 @@ var app = (function () {
     		block,
     		id: create_if_block_10.name,
     		type: "if",
-    		source: "(1209:8) {#if i < path.main.length - 1}",
+    		source: "(1210:8) {#if i < path.main.length - 1}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1221:9) {#if path.left[i] && path.left[i + 1]}
+    // (1222:9) {#if path.left[i] && path.left[i + 1]}
     function create_if_block_12(ctx) {
     	let line;
     	let line_x__value;
@@ -1048,8 +1048,8 @@ var app = (function () {
     			attr_dev(line, "stroke", "white");
     			attr_dev(line, "opacity", "0.3");
     			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-oxdj5w");
-    			add_location(line, file, 1221, 10, 33375);
+    			attr_dev(line, "class", "svelte-27ngvs");
+    			add_location(line, file, 1222, 10, 33403);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, line, anchor);
@@ -1080,14 +1080,14 @@ var app = (function () {
     		block,
     		id: create_if_block_12.name,
     		type: "if",
-    		source: "(1221:9) {#if path.left[i] && path.left[i + 1]}",
+    		source: "(1222:9) {#if path.left[i] && path.left[i + 1]}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1232:9) {#if path.right[i] && path.right[i + 1]}
+    // (1233:9) {#if path.right[i] && path.right[i + 1]}
     function create_if_block_11(ctx) {
     	let line;
     	let line_x__value;
@@ -1105,8 +1105,8 @@ var app = (function () {
     			attr_dev(line, "stroke", "white");
     			attr_dev(line, "opacity", "0.3");
     			attr_dev(line, "stroke-width", "1");
-    			attr_dev(line, "class", "svelte-oxdj5w");
-    			add_location(line, file, 1232, 10, 33700);
+    			attr_dev(line, "class", "svelte-27ngvs");
+    			add_location(line, file, 1233, 10, 33728);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, line, anchor);
@@ -1137,14 +1137,14 @@ var app = (function () {
     		block,
     		id: create_if_block_11.name,
     		type: "if",
-    		source: "(1232:9) {#if path.right[i] && path.right[i + 1]}",
+    		source: "(1233:9) {#if path.right[i] && path.right[i + 1]}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1208:7) {#each path.main as point, i}
+    // (1209:7) {#each path.main as point, i}
     function create_each_block_4(ctx) {
     	let if_block_anchor;
     	let if_block = /*i*/ ctx[93] < /*path*/ ctx[8].main.length - 1 && create_if_block_10(ctx);
@@ -1182,14 +1182,14 @@ var app = (function () {
     		block,
     		id: create_each_block_4.name,
     		type: "each",
-    		source: "(1208:7) {#each path.main as point, i}",
+    		source: "(1209:7) {#each path.main as point, i}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1207:6) {#each offsetPaths as path}
+    // (1208:6) {#each offsetPaths as path}
     function create_each_block_3(ctx) {
     	let each_1_anchor;
     	let each_value_4 = /*path*/ ctx[8].main;
@@ -1252,14 +1252,14 @@ var app = (function () {
     		block,
     		id: create_each_block_3.name,
     		type: "each",
-    		source: "(1207:6) {#each offsetPaths as path}",
+    		source: "(1208:6) {#each offsetPaths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1251:5) {#each $paths as path}
+    // (1252:5) {#each $paths as path}
     function create_each_block_2(ctx) {
     	let polyline;
     	let polyline_points_value;
@@ -1267,10 +1267,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			polyline = svg_element("polyline");
-    			attr_dev(polyline, "class", "curve svelte-oxdj5w");
+    			attr_dev(polyline, "class", "curve svelte-27ngvs");
     			attr_dev(polyline, "points", polyline_points_value = /*path*/ ctx[8].bezierCurvePoints.map(func).join(' '));
     			set_style(polyline, "stroke", /*path*/ ctx[8].color);
-    			add_location(polyline, file, 1251, 6, 34149);
+    			add_location(polyline, file, 1252, 6, 34177);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, polyline, anchor);
@@ -1293,14 +1293,14 @@ var app = (function () {
     		block,
     		id: create_each_block_2.name,
     		type: "each",
-    		source: "(1251:5) {#each $paths as path}",
+    		source: "(1252:5) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1294:62) 
+    // (1295:62) 
     function create_if_block_8(ctx) {
     	let label;
     	let t0;
@@ -1316,8 +1316,8 @@ var app = (function () {
     			t2 = text(":");
     			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-oxdj5w");
-    			add_location(label, file, 1294, 11, 38124);
+    			attr_dev(label, "class", "svelte-27ngvs");
+    			add_location(label, file, 1295, 11, 38152);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -1339,14 +1339,14 @@ var app = (function () {
     		block,
     		id: create_if_block_8.name,
     		type: "if",
-    		source: "(1294:62) ",
+    		source: "(1295:62) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1292:10) {#if (i == 0)}
+    // (1293:10) {#if (i == 0)}
     function create_if_block_7(ctx) {
     	let label;
     	let t;
@@ -1358,8 +1358,8 @@ var app = (function () {
     			t = text("Endpoint:");
     			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-oxdj5w");
-    			add_location(label, file, 1292, 11, 37965);
+    			attr_dev(label, "class", "svelte-27ngvs");
+    			add_location(label, file, 1293, 11, 37993);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -1379,14 +1379,14 @@ var app = (function () {
     		block,
     		id: create_if_block_7.name,
     		type: "if",
-    		source: "(1292:10) {#if (i == 0)}",
+    		source: "(1293:10) {#if (i == 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1318:27) 
+    // (1319:27) 
     function create_if_block_3(ctx) {
     	let div2;
     	let div0;
@@ -1464,48 +1464,48 @@ var app = (function () {
     			option2.textContent = "Linear";
     			t9 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-oxdj5w");
+    			attr_dev(label0, "class", "cp-x svelte-27ngvs");
     			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1320, 12, 40025);
+    			add_location(label0, file, 1321, 12, 40053);
     			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
-    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
     			input0.value = input0_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].x;
-    			add_location(input0, file, 1321, 12, 40128);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-oxdj5w");
-    			add_location(div0, file, 1319, 11, 39974);
-    			attr_dev(label1, "class", "cp-y svelte-oxdj5w");
+    			add_location(input0, file, 1322, 12, 40156);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-27ngvs");
+    			add_location(div0, file, 1320, 11, 40002);
+    			attr_dev(label1, "class", "cp-y svelte-27ngvs");
     			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1324, 12, 40510);
+    			add_location(label1, file, 1325, 12, 40538);
     			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
-    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
     			input1.value = input1_value_value = /*path*/ ctx[8].controlPoints[/*path*/ ctx[8].controlPoints.length - 1].y;
-    			add_location(input1, file, 1325, 12, 40615);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-oxdj5w");
-    			add_location(div1, file, 1323, 11, 40459);
+    			add_location(input1, file, 1326, 12, 40643);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-27ngvs");
+    			add_location(div1, file, 1324, 11, 40487);
     			option0.__value = "constant";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-oxdj5w");
-    			add_location(option0, file, 1329, 12, 41161);
+    			attr_dev(option0, "class", "svelte-27ngvs");
+    			add_location(option0, file, 1330, 12, 41189);
     			option1.__value = "tangential";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-oxdj5w");
-    			add_location(option1, file, 1330, 12, 41216);
+    			attr_dev(option1, "class", "svelte-27ngvs");
+    			add_location(option1, file, 1331, 12, 41244);
     			option2.__value = "linear";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-oxdj5w");
-    			add_location(option2, file, 1331, 12, 41275);
+    			attr_dev(option2, "class", "svelte-27ngvs");
+    			add_location(option2, file, 1332, 12, 41303);
     			attr_dev(select, "id", "robot-heading");
-    			attr_dev(select, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(select, "class", "standard-input-box svelte-27ngvs");
     			if (/*path*/ ctx[8].robotHeading === void 0) add_render_callback(select_change_handler);
-    			add_location(select, file, 1328, 11, 41016);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div2, file, 1318, 10, 39926);
+    			add_location(select, file, 1329, 11, 41044);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div2, file, 1319, 10, 39954);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1599,14 +1599,14 @@ var app = (function () {
     		block,
     		id: create_if_block_3.name,
     		type: "if",
-    		source: "(1318:27) ",
+    		source: "(1319:27) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1297:10) {#if i > 0 && i!=path.controlPoints.length-1}
+    // (1298:10) {#if i > 0 && i!=path.controlPoints.length-1}
     function create_if_block_1(ctx) {
     	let div2;
     	let div0;
@@ -1654,32 +1654,32 @@ var app = (function () {
     			input1 = element("input");
     			t5 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-oxdj5w");
+    			attr_dev(label0, "class", "cp-x svelte-27ngvs");
     			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1299, 13, 38402);
+    			add_location(label0, file, 1300, 13, 38430);
     			attr_dev(input0, "id", "cp-input");
-    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
     			input0.value = input0_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].x;
-    			add_location(input0, file, 1300, 13, 38506);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-oxdj5w");
-    			add_location(div0, file, 1298, 12, 38350);
-    			attr_dev(label1, "class", "cp-y svelte-oxdj5w");
+    			add_location(input0, file, 1301, 13, 38534);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-27ngvs");
+    			add_location(div0, file, 1299, 12, 38378);
+    			attr_dev(label1, "class", "cp-y svelte-27ngvs");
     			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[8].id + "-" + /*i*/ ctx[93] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1303, 13, 38820);
+    			add_location(label1, file, 1304, 13, 38848);
     			attr_dev(input1, "id", "cp-input");
-    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
     			input1.value = input1_value_value = /*path*/ ctx[8].controlPoints[/*i*/ ctx[93]].y;
-    			add_location(input1, file, 1304, 13, 38926);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-oxdj5w");
-    			add_location(div1, file, 1302, 12, 38768);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div2, file, 1297, 11, 38301);
+    			add_location(input1, file, 1305, 13, 38954);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-27ngvs");
+    			add_location(div1, file, 1303, 12, 38796);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div2, file, 1298, 11, 38329);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1739,14 +1739,14 @@ var app = (function () {
     		block,
     		id: create_if_block_1.name,
     		type: "if",
-    		source: "(1297:10) {#if i > 0 && i!=path.controlPoints.length-1}",
+    		source: "(1298:10) {#if i > 0 && i!=path.controlPoints.length-1}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1347:54) 
+    // (1348:54) 
     function create_if_block_6(ctx) {
     	let div;
     	let input;
@@ -1762,12 +1762,12 @@ var app = (function () {
     			div = element("div");
     			input = element("input");
     			attr_dev(input, "id", "constant-angle");
-    			attr_dev(input, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "0.01");
-    			add_location(input, file, 1348, 13, 42289);
-    			attr_dev(div, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div, file, 1347, 12, 42239);
+    			add_location(input, file, 1349, 13, 42317);
+    			attr_dev(div, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div, file, 1348, 12, 42267);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -1801,14 +1801,14 @@ var app = (function () {
     		block,
     		id: create_if_block_6.name,
     		type: "if",
-    		source: "(1347:54) ",
+    		source: "(1348:54) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1342:56) 
+    // (1343:56) 
     function create_if_block_5(ctx) {
     	let div;
     	let label;
@@ -1830,14 +1830,14 @@ var app = (function () {
     			input = element("input");
     			attr_dev(label, "for", "reverse");
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-oxdj5w");
-    			add_location(label, file, 1343, 13, 41971);
+    			attr_dev(label, "class", "svelte-27ngvs");
+    			add_location(label, file, 1344, 13, 41999);
     			attr_dev(input, "id", "reverse");
     			attr_dev(input, "type", "checkbox");
-    			attr_dev(input, "class", "svelte-oxdj5w");
-    			add_location(input, file, 1344, 13, 42048);
-    			attr_dev(div, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div, file, 1342, 12, 41921);
+    			attr_dev(input, "class", "svelte-27ngvs");
+    			add_location(input, file, 1345, 13, 42076);
+    			attr_dev(div, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div, file, 1343, 12, 41949);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -1873,14 +1873,14 @@ var app = (function () {
     		block,
     		id: create_if_block_5.name,
     		type: "if",
-    		source: "(1342:56) ",
+    		source: "(1343:56) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1335:11) {#if path.robotHeading === 'linear'}
+    // (1336:11) {#if path.robotHeading === 'linear'}
     function create_if_block_4(ctx) {
     	let div0;
     	let input0;
@@ -1906,19 +1906,19 @@ var app = (function () {
     			div1 = element("div");
     			input1 = element("input");
     			attr_dev(input0, "id", "start-angle");
-    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 1336, 13, 41447);
-    			attr_dev(div0, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div0, file, 1335, 12, 41397);
+    			add_location(input0, file, 1337, 13, 41475);
+    			attr_dev(div0, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div0, file, 1336, 12, 41425);
     			attr_dev(input1, "id", "end-angle");
-    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 1339, 13, 41683);
-    			attr_dev(div1, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div1, file, 1338, 12, 41633);
+    			add_location(input1, file, 1340, 13, 41711);
+    			attr_dev(div1, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div1, file, 1339, 12, 41661);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div0, anchor);
@@ -1964,14 +1964,14 @@ var app = (function () {
     		block,
     		id: create_if_block_4.name,
     		type: "if",
-    		source: "(1335:11) {#if path.robotHeading === 'linear'}",
+    		source: "(1336:11) {#if path.robotHeading === 'linear'}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1308:11) {#if (i > 0)}
+    // (1309:11) {#if (i > 0)}
     function create_if_block_2(ctx) {
     	let svg;
     	let path_1;
@@ -1987,16 +1987,16 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path_1, "class", "svelte-oxdj5w");
-    			add_location(path_1, file, 1312, 285, 39627);
+    			attr_dev(path_1, "class", "svelte-27ngvs");
+    			add_location(path_1, file, 1313, 285, 39655);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
     			set_style(svg, "cursor", "pointer");
-    			attr_dev(svg, "class", "svelte-oxdj5w");
-    			add_location(svg, file, 1312, 11, 39353);
+    			attr_dev(svg, "class", "svelte-27ngvs");
+    			add_location(svg, file, 1313, 11, 39381);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -2021,14 +2021,14 @@ var app = (function () {
     		block,
     		id: create_if_block_2.name,
     		type: "if",
-    		source: "(1308:11) {#if (i > 0)}",
+    		source: "(1309:11) {#if (i > 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1290:8) {#each path.controlPoints as { x, y }
+    // (1291:8) {#each path.controlPoints as { x, y }
     function create_each_block_1(ctx) {
     	let div;
     	let t;
@@ -2055,8 +2055,8 @@ var app = (function () {
     			if (if_block0) if_block0.c();
     			t = space();
     			if (if_block1) if_block1.c();
-    			attr_dev(div, "class", "control-point-box svelte-oxdj5w");
-    			add_location(div, file, 1290, 9, 37897);
+    			attr_dev(div, "class", "control-point-box svelte-27ngvs");
+    			add_location(div, file, 1291, 9, 37925);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -2106,14 +2106,14 @@ var app = (function () {
     		block,
     		id: create_each_block_1.name,
     		type: "each",
-    		source: "(1290:8) {#each path.controlPoints as { x, y }",
+    		source: "(1291:8) {#each path.controlPoints as { x, y }",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1266:4) {#each $paths as path}
+    // (1267:4) {#each $paths as path}
     function create_each_block(ctx) {
     	let div4;
     	let div2;
@@ -2212,8 +2212,8 @@ var app = (function () {
     			}
 
     			attr_dev(path0, "d", "M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z");
-    			attr_dev(path0, "class", "svelte-oxdj5w");
-    			add_location(path0, file, 1272, 534, 35285);
+    			attr_dev(path0, "class", "svelte-27ngvs");
+    			add_location(path0, file, 1273, 534, 35313);
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
@@ -2227,11 +2227,11 @@ var app = (function () {
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg0, "class", "svelte-oxdj5w");
-    			add_location(svg0, file, 1272, 8, 34759);
+    			attr_dev(svg0, "class", "svelte-27ngvs");
+    			add_location(svg0, file, 1273, 8, 34787);
     			attr_dev(path1, "d", "M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z");
-    			attr_dev(path1, "class", "svelte-oxdj5w");
-    			add_location(path1, file, 1275, 482, 35983);
+    			attr_dev(path1, "class", "svelte-27ngvs");
+    			add_location(path1, file, 1276, 482, 36011);
     			attr_dev(svg1, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg1, "height", "24px");
     			attr_dev(svg1, "viewBox", "0 -960 960 960");
@@ -2245,48 +2245,48 @@ var app = (function () {
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg1, "class", "svelte-oxdj5w");
-    			add_location(svg1, file, 1275, 8, 35509);
+    			attr_dev(svg1, "class", "svelte-27ngvs");
+    			add_location(svg1, file, 1276, 8, 35537);
     			attr_dev(input, "type", "color");
-    			attr_dev(input, "class", "color-circle svelte-oxdj5w");
+    			attr_dev(input, "class", "color-circle svelte-27ngvs");
     			set_style(input, "background-color", /*path*/ ctx[8].color);
-    			add_location(input, file, 1276, 8, 36077);
-    			attr_dev(p, "class", "path-title svelte-oxdj5w");
+    			add_location(input, file, 1277, 8, 36105);
+    			attr_dev(p, "class", "path-title svelte-27ngvs");
     			set_style(p, "user-select", "none");
-    			add_location(p, file, 1277, 8, 36247);
-    			attr_dev(div0, "class", "path-and-color svelte-oxdj5w");
-    			add_location(div0, file, 1268, 7, 34519);
+    			add_location(p, file, 1278, 8, 36275);
+    			attr_dev(div0, "class", "path-and-color svelte-27ngvs");
+    			add_location(div0, file, 1269, 7, 34547);
     			attr_dev(path2, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path2, "class", "svelte-oxdj5w");
-    			add_location(path2, file, 1283, 276, 36841);
+    			attr_dev(path2, "class", "svelte-27ngvs");
+    			add_location(path2, file, 1284, 276, 36869);
     			attr_dev(svg2, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg2, "height", "24px");
     			attr_dev(svg2, "viewBox", "0 -960 960 960");
     			attr_dev(svg2, "width", "24px");
     			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[7].length > 1 ? "#FF474D" : "gray");
     			set_style(svg2, "cursor", /*$paths*/ ctx[7].length > 1 ? 'pointer' : 'default');
-    			attr_dev(svg2, "class", "svelte-oxdj5w");
-    			add_location(svg2, file, 1283, 8, 36573);
+    			attr_dev(svg2, "class", "svelte-27ngvs");
+    			add_location(svg2, file, 1284, 8, 36601);
     			attr_dev(path3, "d", "M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z");
-    			attr_dev(path3, "class", "svelte-oxdj5w");
-    			add_location(path3, file, 1284, 347, 37401);
+    			attr_dev(path3, "class", "svelte-27ngvs");
+    			add_location(path3, file, 1285, 347, 37429);
     			attr_dev(svg3, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg3, "height", "24px");
     			attr_dev(svg3, "viewBox", "0 -960 960 960");
     			attr_dev(svg3, "width", "24px");
     			attr_dev(svg3, "fill", "#90EE90");
     			set_style(svg3, "cursor", "pointer");
-    			attr_dev(svg3, "class", "svelte-oxdj5w");
-    			add_location(svg3, file, 1284, 8, 37062);
-    			attr_dev(div1, "class", "add-and-remove svelte-oxdj5w");
-    			add_location(div1, file, 1281, 7, 36471);
-    			attr_dev(div2, "class", "path-header svelte-oxdj5w");
-    			add_location(div2, file, 1267, 6, 34486);
-    			attr_dev(div3, "class", "path-control-points svelte-oxdj5w");
-    			add_location(div3, file, 1288, 7, 37804);
-    			attr_dev(div4, "class", "path svelte-oxdj5w");
+    			attr_dev(svg3, "class", "svelte-27ngvs");
+    			add_location(svg3, file, 1285, 8, 37090);
+    			attr_dev(div1, "class", "add-and-remove svelte-27ngvs");
+    			add_location(div1, file, 1282, 7, 36499);
+    			attr_dev(div2, "class", "path-header svelte-27ngvs");
+    			add_location(div2, file, 1268, 6, 34514);
+    			attr_dev(div3, "class", "path-control-points svelte-27ngvs");
+    			add_location(div3, file, 1289, 7, 37832);
+    			attr_dev(div4, "class", "path svelte-27ngvs");
     			set_style(div4, "border-color", /*path*/ ctx[8].color);
-    			add_location(div4, file, 1266, 5, 34425);
+    			add_location(div4, file, 1267, 5, 34453);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div4, anchor);
@@ -2419,14 +2419,14 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(1266:4) {#each $paths as path}",
+    		source: "(1267:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1373:5) {:else}
+    // (1374:5) {:else}
     function create_else_block(ctx) {
     	let svg;
     	let path_1;
@@ -2438,15 +2438,15 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z");
-    			attr_dev(path_1, "class", "svelte-oxdj5w");
-    			add_location(path_1, file, 1373, 134, 43398);
+    			attr_dev(path_1, "class", "svelte-27ngvs");
+    			add_location(path_1, file, 1374, 134, 43426);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
-    			attr_dev(svg, "class", "svelte-oxdj5w");
-    			add_location(svg, file, 1373, 6, 43270);
+    			attr_dev(svg, "class", "svelte-27ngvs");
+    			add_location(svg, file, 1374, 6, 43298);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -2469,14 +2469,14 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(1373:5) {:else}",
+    		source: "(1374:5) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1370:5) {#if !isPlaying}
+    // (1371:5) {#if !isPlaying}
     function create_if_block(ctx) {
     	let svg;
     	let path_1;
@@ -2488,15 +2488,15 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z");
-    			attr_dev(path_1, "class", "svelte-oxdj5w");
-    			add_location(path_1, file, 1371, 134, 43167);
+    			attr_dev(path_1, "class", "svelte-27ngvs");
+    			add_location(path_1, file, 1372, 134, 43195);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#90EE90");
-    			attr_dev(svg, "class", "svelte-oxdj5w");
-    			add_location(svg, file, 1371, 7, 43040);
+    			attr_dev(svg, "class", "svelte-27ngvs");
+    			add_location(svg, file, 1372, 7, 43068);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -2519,7 +2519,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(1370:5) {#if !isPlaying}",
+    		source: "(1371:5) {#if !isPlaying}",
     		ctx
     	});
 
@@ -2841,235 +2841,236 @@ var app = (function () {
     			if_block4.c();
     			t67 = space();
     			input9 = element("input");
-    			attr_dev(h1, "class", "page-title svelte-oxdj5w");
-    			add_location(h1, file, 1072, 2, 26356);
+    			attr_dev(h1, "class", "page-title svelte-27ngvs");
+    			add_location(h1, file, 1073, 2, 26361);
     			attr_dev(path_1, "d", "M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z");
-    			attr_dev(path_1, "class", "svelte-oxdj5w");
-    			add_location(path_1, file, 1075, 155, 26637);
+    			attr_dev(path_1, "class", "svelte-27ngvs");
+    			add_location(path_1, file, 1076, 155, 26642);
     			attr_dev(svg0, "id", "code-window-btn");
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
     			attr_dev(svg0, "width", "24px");
     			attr_dev(svg0, "fill", "black");
-    			attr_dev(svg0, "class", "svelte-oxdj5w");
-    			add_location(svg0, file, 1075, 3, 26485);
+    			attr_dev(svg0, "class", "svelte-27ngvs");
+    			add_location(svg0, file, 1076, 3, 26490);
     			set_style(button0, "user-select", "none");
-    			attr_dev(button0, "class", "svelte-oxdj5w");
-    			add_location(button0, file, 1076, 3, 26874);
+    			attr_dev(button0, "class", "svelte-27ngvs");
+    			add_location(button0, file, 1077, 3, 26879);
     			set_style(button1, "user-select", "none");
-    			attr_dev(button1, "class", "svelte-oxdj5w");
-    			add_location(button1, file, 1077, 3, 26973);
-    			attr_dev(div0, "class", "export-import svelte-oxdj5w");
-    			add_location(div0, file, 1073, 2, 26394);
-    			attr_dev(div1, "class", "header svelte-oxdj5w");
-    			add_location(div1, file, 1071, 1, 26333);
-    			attr_dev(h20, "class", "section-title svelte-oxdj5w");
+    			attr_dev(button1, "class", "svelte-27ngvs");
+    			add_location(button1, file, 1078, 3, 26978);
+    			attr_dev(div0, "class", "export-import svelte-27ngvs");
+    			add_location(div0, file, 1074, 2, 26399);
+    			attr_dev(div1, "class", "header svelte-27ngvs");
+    			add_location(div1, file, 1072, 1, 26338);
+    			attr_dev(h20, "class", "section-title svelte-27ngvs");
     			set_style(h20, "user-select", "none");
-    			add_location(h20, file, 1087, 6, 27230);
+    			add_location(h20, file, 1088, 6, 27235);
     			attr_dev(label0, "for", "robotUnits");
     			set_style(label0, "user-select", "none");
-    			attr_dev(label0, "class", "svelte-oxdj5w");
-    			add_location(label0, file, 1090, 7, 27343);
+    			attr_dev(label0, "class", "svelte-27ngvs");
+    			add_location(label0, file, 1091, 7, 27348);
     			option0.__value = "inches";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-oxdj5w");
-    			add_location(option0, file, 1092, 8, 27499);
+    			attr_dev(option0, "class", "svelte-27ngvs");
+    			add_location(option0, file, 1093, 8, 27504);
     			option1.__value = "cm";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-oxdj5w");
-    			add_location(option1, file, 1093, 8, 27546);
+    			attr_dev(option1, "class", "svelte-27ngvs");
+    			add_location(option1, file, 1094, 8, 27551);
     			attr_dev(select0, "id", "robotUnits");
-    			attr_dev(select0, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(select0, "class", "standard-input-box svelte-27ngvs");
     			if (/*robotUnits*/ ctx[2] === void 0) add_render_callback(() => /*select0_change_handler*/ ctx[36].call(select0));
-    			add_location(select0, file, 1091, 7, 27415);
-    			attr_dev(div2, "class", "robot-options svelte-oxdj5w");
-    			add_location(div2, file, 1089, 6, 27308);
+    			add_location(select0, file, 1092, 7, 27420);
+    			attr_dev(div2, "class", "robot-options svelte-27ngvs");
+    			add_location(div2, file, 1090, 6, 27313);
     			attr_dev(label1, "for", "robot-length");
     			set_style(label1, "user-select", "none");
-    			attr_dev(label1, "class", "svelte-oxdj5w");
-    			add_location(label1, file, 1100, 7, 27672);
+    			attr_dev(label1, "class", "svelte-27ngvs");
+    			add_location(label1, file, 1101, 7, 27677);
     			attr_dev(input0, "id", "robot-length");
-    			attr_dev(input0, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input0, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			add_location(input0, file, 1101, 7, 27753);
-    			attr_dev(div3, "class", "robot-options svelte-oxdj5w");
-    			add_location(div3, file, 1099, 6, 27637);
+    			add_location(input0, file, 1102, 7, 27758);
+    			attr_dev(div3, "class", "robot-options svelte-27ngvs");
+    			add_location(div3, file, 1100, 6, 27642);
     			attr_dev(label2, "for", "robot-width");
     			set_style(label2, "user-select", "none");
-    			attr_dev(label2, "class", "svelte-oxdj5w");
-    			add_location(label2, file, 1105, 7, 27983);
+    			attr_dev(label2, "class", "svelte-27ngvs");
+    			add_location(label2, file, 1106, 7, 27988);
     			attr_dev(input1, "id", "robot-width");
-    			attr_dev(input1, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(input1, "class", "standard-input-box svelte-27ngvs");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			add_location(input1, file, 1106, 7, 28062);
-    			attr_dev(div4, "class", "robot-options svelte-oxdj5w");
-    			add_location(div4, file, 1104, 6, 27948);
+    			add_location(input1, file, 1107, 7, 28067);
+    			attr_dev(div4, "class", "robot-options svelte-27ngvs");
+    			add_location(div4, file, 1105, 6, 27953);
     			attr_dev(h21, "id", "field-options");
-    			attr_dev(h21, "class", "section-title svelte-oxdj5w");
+    			attr_dev(h21, "class", "section-title svelte-27ngvs");
     			set_style(h21, "user-select", "none");
-    			add_location(h21, file, 1111, 6, 28256);
-    			attr_dev(label3, "class", "adv-options svelte-oxdj5w");
+    			add_location(h21, file, 1112, 6, 28261);
+    			attr_dev(label3, "class", "adv-options svelte-27ngvs");
     			set_style(label3, "user-select", "none");
-    			add_location(label3, file, 1116, 6, 28457);
-    			attr_dev(label4, "class", "cp-x svelte-oxdj5w");
+    			add_location(label3, file, 1117, 6, 28462);
+    			attr_dev(label4, "class", "cp-x svelte-27ngvs");
     			set_style(label4, "user-select", "none");
-    			add_location(label4, file, 1122, 8, 28707);
-    			attr_dev(div5, "class", "control-point-mini-box-x svelte-oxdj5w");
-    			add_location(div5, file, 1120, 7, 28595);
-    			attr_dev(label5, "class", "cp-x svelte-oxdj5w");
+    			add_location(label4, file, 1123, 8, 28712);
+    			attr_dev(div5, "class", "control-point-mini-box-x svelte-27ngvs");
+    			add_location(div5, file, 1121, 7, 28600);
+    			attr_dev(label5, "class", "cp-x svelte-27ngvs");
     			set_style(label5, "user-select", "none");
-    			add_location(label5, file, 1129, 8, 29194);
-    			attr_dev(div6, "class", "control-point-mini-box-y svelte-oxdj5w");
-    			add_location(div6, file, 1127, 7, 29082);
-    			attr_dev(div7, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div7, file, 1119, 6, 28551);
-    			attr_dev(div8, "class", "start-pos-container svelte-oxdj5w");
-    			add_location(div8, file, 1115, 6, 28417);
-    			attr_dev(label6, "class", "adv-options svelte-oxdj5w");
+    			add_location(label5, file, 1130, 8, 29199);
+    			attr_dev(div6, "class", "control-point-mini-box-y svelte-27ngvs");
+    			add_location(div6, file, 1128, 7, 29087);
+    			attr_dev(div7, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div7, file, 1120, 6, 28556);
+    			attr_dev(div8, "class", "start-pos-container svelte-27ngvs");
+    			add_location(div8, file, 1116, 6, 28422);
+    			attr_dev(label6, "class", "adv-options svelte-27ngvs");
     			set_style(label6, "user-select", "none");
-    			add_location(label6, file, 1138, 6, 29659);
-    			attr_dev(label7, "class", "cp-x svelte-oxdj5w");
+    			add_location(label6, file, 1139, 6, 29664);
+    			attr_dev(label7, "class", "cp-x svelte-27ngvs");
     			set_style(label7, "user-select", "none");
-    			add_location(label7, file, 1143, 9, 29942);
-    			attr_dev(input2, "class", "start-pos-box svelte-oxdj5w");
+    			add_location(label7, file, 1144, 9, 29947);
+    			attr_dev(input2, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input2, "type", "number");
     			attr_dev(input2, "step", "0.001");
     			input2.readOnly = true;
-    			add_location(input2, file, 1144, 9, 30008);
-    			attr_dev(div9, "class", "control-point-mini-box-x svelte-oxdj5w");
-    			add_location(div9, file, 1141, 8, 29828);
-    			attr_dev(label8, "class", "cp-y svelte-oxdj5w");
+    			add_location(input2, file, 1145, 9, 30013);
+    			attr_dev(div9, "class", "control-point-mini-box-x svelte-27ngvs");
+    			add_location(div9, file, 1142, 8, 29833);
+    			attr_dev(label8, "class", "cp-y svelte-27ngvs");
     			set_style(label8, "user-select", "none");
-    			add_location(label8, file, 1148, 9, 30233);
-    			attr_dev(input3, "class", "start-pos-box svelte-oxdj5w");
+    			add_location(label8, file, 1149, 9, 30238);
+    			attr_dev(input3, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input3, "type", "number");
     			attr_dev(input3, "step", "0.001");
     			input3.readOnly = true;
-    			add_location(input3, file, 1149, 9, 30299);
-    			attr_dev(div10, "class", "control-point-mini-box-y svelte-oxdj5w");
-    			add_location(div10, file, 1146, 8, 30119);
-    			attr_dev(label9, "class", "cp-heading svelte-oxdj5w");
+    			add_location(input3, file, 1150, 9, 30304);
+    			attr_dev(div10, "class", "control-point-mini-box-y svelte-27ngvs");
+    			add_location(div10, file, 1147, 8, 30124);
+    			attr_dev(label9, "class", "cp-heading svelte-27ngvs");
     			set_style(label9, "user-select", "none");
-    			add_location(label9, file, 1153, 9, 30530);
-    			attr_dev(input4, "class", "start-pos-box svelte-oxdj5w");
+    			add_location(label9, file, 1154, 9, 30535);
+    			attr_dev(input4, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input4, "type", "number");
     			attr_dev(input4, "step", "0.001");
     			input4.value = input4_value_value = Math.round(/*robotLiveAngle*/ ctx[13]);
     			input4.readOnly = true;
-    			add_location(input4, file, 1154, 9, 30602);
-    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-oxdj5w");
-    			add_location(div11, file, 1151, 8, 30410);
-    			attr_dev(div12, "class", "cp-x-y svelte-oxdj5w");
-    			add_location(div12, file, 1140, 7, 29799);
-    			attr_dev(label10, "class", "cp-x svelte-oxdj5w");
+    			add_location(input4, file, 1155, 9, 30607);
+    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-27ngvs");
+    			add_location(div11, file, 1152, 8, 30415);
+    			attr_dev(div12, "class", "cp-x-y svelte-27ngvs");
+    			add_location(div12, file, 1141, 7, 29804);
+    			attr_dev(label10, "class", "cp-x svelte-27ngvs");
     			set_style(label10, "user-select", "none");
-    			add_location(label10, file, 1159, 8, 30866);
-    			attr_dev(input5, "class", "start-pos-box svelte-oxdj5w");
+    			set_style(label10, "font-weight", "600");
+    			add_location(label10, file, 1160, 8, 30871);
+    			attr_dev(input5, "class", "start-pos-box svelte-27ngvs");
     			attr_dev(input5, "type", "number");
     			attr_dev(input5, "step", "0.001");
     			input5.value = input5_value_value = /*currentPathIndex*/ ctx[11] + 1;
     			input5.readOnly = true;
-    			add_location(input5, file, 1160, 8, 30942);
-    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-oxdj5w");
-    			add_location(div13, file, 1157, 7, 30741);
+    			add_location(input5, file, 1161, 8, 30963);
+    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-27ngvs");
+    			add_location(div13, file, 1158, 7, 30746);
     			attr_dev(div14, "id", "live-pos");
-    			attr_dev(div14, "class", "control-point-mini-box svelte-oxdj5w");
-    			add_location(div14, file, 1139, 6, 29741);
+    			attr_dev(div14, "class", "control-point-mini-box svelte-27ngvs");
+    			add_location(div14, file, 1140, 6, 29746);
     			attr_dev(h22, "id", "advanced-options");
-    			attr_dev(h22, "class", "section-title svelte-oxdj5w");
+    			attr_dev(h22, "class", "section-title svelte-27ngvs");
     			set_style(h22, "user-select", "none");
-    			add_location(h22, file, 1165, 6, 31080);
+    			add_location(h22, file, 1166, 6, 31101);
     			attr_dev(label11, "for", "field-length");
     			set_style(label11, "user-select", "none");
-    			attr_dev(label11, "class", "svelte-oxdj5w");
-    			add_location(label11, file, 1167, 7, 31220);
+    			attr_dev(label11, "class", "svelte-27ngvs");
+    			add_location(label11, file, 1168, 7, 31241);
     			attr_dev(input6, "id", "auto-link-paths");
     			attr_dev(input6, "type", "checkbox");
-    			attr_dev(input6, "class", "svelte-oxdj5w");
-    			add_location(input6, file, 1168, 7, 31307);
-    			attr_dev(div15, "class", "advanced-options svelte-oxdj5w");
-    			add_location(div15, file, 1166, 6, 31182);
+    			attr_dev(input6, "class", "svelte-27ngvs");
+    			add_location(input6, file, 1169, 7, 31328);
+    			attr_dev(div15, "class", "advanced-options svelte-27ngvs");
+    			add_location(div15, file, 1167, 6, 31203);
     			attr_dev(label12, "for", "field-length");
     			set_style(label12, "user-select", "none");
-    			attr_dev(label12, "class", "svelte-oxdj5w");
-    			add_location(label12, file, 1172, 7, 31444);
+    			attr_dev(label12, "class", "svelte-27ngvs");
+    			add_location(label12, file, 1173, 7, 31465);
     			attr_dev(input7, "id", "auto-link-paths");
     			attr_dev(input7, "type", "checkbox");
-    			attr_dev(input7, "class", "svelte-oxdj5w");
-    			add_location(input7, file, 1173, 7, 31535);
-    			attr_dev(div16, "class", "advanced-options svelte-oxdj5w");
-    			add_location(div16, file, 1171, 6, 31406);
+    			attr_dev(input7, "class", "svelte-27ngvs");
+    			add_location(input7, file, 1174, 7, 31556);
+    			attr_dev(div16, "class", "advanced-options svelte-27ngvs");
+    			add_location(div16, file, 1172, 6, 31427);
     			attr_dev(label13, "for", "field-length");
     			set_style(label13, "user-select", "none");
-    			attr_dev(label13, "class", "svelte-oxdj5w");
-    			add_location(label13, file, 1176, 7, 31671);
+    			attr_dev(label13, "class", "svelte-27ngvs");
+    			add_location(label13, file, 1177, 7, 31692);
     			attr_dev(input8, "id", "auto-link-paths");
     			attr_dev(input8, "type", "checkbox");
-    			attr_dev(input8, "class", "svelte-oxdj5w");
-    			add_location(input8, file, 1177, 7, 31755);
-    			attr_dev(div17, "class", "advanced-options svelte-oxdj5w");
-    			add_location(div17, file, 1175, 6, 31633);
+    			attr_dev(input8, "class", "svelte-27ngvs");
+    			add_location(input8, file, 1178, 7, 31776);
+    			attr_dev(div17, "class", "advanced-options svelte-27ngvs");
+    			add_location(div17, file, 1176, 6, 31654);
     			attr_dev(label14, "for", "rotationUnits");
     			set_style(label14, "user-select", "none");
-    			attr_dev(label14, "class", "svelte-oxdj5w");
-    			add_location(label14, file, 1180, 7, 31888);
+    			attr_dev(label14, "class", "svelte-27ngvs");
+    			add_location(label14, file, 1181, 7, 31909);
     			option2.__value = "degrees";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-oxdj5w");
-    			add_location(option2, file, 1182, 8, 32064);
+    			attr_dev(option2, "class", "svelte-27ngvs");
+    			add_location(option2, file, 1183, 8, 32085);
     			option3.__value = "radians";
     			option3.value = option3.__value;
-    			attr_dev(option3, "class", "svelte-oxdj5w");
-    			add_location(option3, file, 1183, 8, 32113);
+    			attr_dev(option3, "class", "svelte-27ngvs");
+    			add_location(option3, file, 1184, 8, 32134);
     			attr_dev(select1, "id", "rotationUnits");
-    			attr_dev(select1, "class", "standard-input-box svelte-oxdj5w");
+    			attr_dev(select1, "class", "standard-input-box svelte-27ngvs");
     			if (/*rotationUnits*/ ctx[3] === void 0) add_render_callback(() => /*select1_change_handler*/ ctx[50].call(select1));
-    			add_location(select1, file, 1181, 7, 31974);
-    			attr_dev(div18, "class", "advanced-options svelte-oxdj5w");
-    			add_location(div18, file, 1179, 6, 31850);
-    			attr_dev(div19, "class", "svelte-oxdj5w");
-    			add_location(div19, file, 1086, 5, 27218);
-    			attr_dev(div20, "class", "robot-options-menu svelte-oxdj5w");
-    			add_location(div20, file, 1085, 4, 27180);
-    			attr_dev(div21, "class", "settings-column svelte-oxdj5w");
-    			add_location(div21, file, 1084, 3, 27146);
+    			add_location(select1, file, 1182, 7, 31995);
+    			attr_dev(div18, "class", "advanced-options svelte-27ngvs");
+    			add_location(div18, file, 1180, 6, 31871);
+    			attr_dev(div19, "class", "svelte-27ngvs");
+    			add_location(div19, file, 1087, 5, 27223);
+    			attr_dev(div20, "class", "robot-options-menu svelte-27ngvs");
+    			add_location(div20, file, 1086, 4, 27185);
+    			attr_dev(div21, "class", "settings-column svelte-27ngvs");
+    			add_location(div21, file, 1085, 3, 27151);
     			attr_dev(svg1, "viewBox", "0 0 144 144");
     			attr_dev(svg1, "width", "100%");
     			attr_dev(svg1, "height", "100%");
     			set_style(svg1, "position", "absolute");
     			set_style(svg1, "top", "0");
     			set_style(svg1, "left", "0");
-    			attr_dev(svg1, "class", "svelte-oxdj5w");
-    			add_location(svg1, file, 1249, 4, 34015);
-    			attr_dev(div22, "class", "field svelte-oxdj5w");
-    			add_location(div22, file, 1190, 3, 32221);
+    			attr_dev(svg1, "class", "svelte-27ngvs");
+    			add_location(svg1, file, 1250, 4, 34043);
+    			attr_dev(div22, "class", "field svelte-27ngvs");
+    			add_location(div22, file, 1191, 3, 32242);
     			set_style(button2, "user-select", "none");
-    			attr_dev(button2, "class", "svelte-oxdj5w");
-    			add_location(button2, file, 1360, 4, 42593);
-    			attr_dev(div23, "class", "paths svelte-oxdj5w");
-    			add_location(div23, file, 1264, 3, 34373);
-    			attr_dev(div24, "class", "container svelte-oxdj5w");
-    			add_location(div24, file, 1083, 2, 27119);
-    			attr_dev(div25, "class", "play-button svelte-oxdj5w");
-    			add_location(div25, file, 1366, 4, 42793);
+    			attr_dev(button2, "class", "svelte-27ngvs");
+    			add_location(button2, file, 1361, 4, 42621);
+    			attr_dev(div23, "class", "paths svelte-27ngvs");
+    			add_location(div23, file, 1265, 3, 34401);
+    			attr_dev(div24, "class", "container svelte-27ngvs");
+    			add_location(div24, file, 1084, 2, 27124);
+    			attr_dev(div25, "class", "play-button svelte-27ngvs");
+    			add_location(div25, file, 1367, 4, 42821);
     			attr_dev(input9, "type", "range");
     			attr_dev(input9, "id", "scrub");
     			attr_dev(input9, "min", "0");
     			attr_dev(input9, "max", "100");
     			attr_dev(input9, "step", "0.001");
-    			attr_dev(input9, "class", "svelte-oxdj5w");
-    			add_location(input9, file, 1377, 4, 43578);
-    			attr_dev(div26, "class", "scrubbing-bar svelte-oxdj5w");
-    			add_location(div26, file, 1365, 3, 42761);
-    			attr_dev(div27, "class", "footer svelte-oxdj5w");
-    			add_location(div27, file, 1364, 2, 42737);
-    			attr_dev(div28, "class", "main-content svelte-oxdj5w");
-    			add_location(div28, file, 1081, 1, 27088);
-    			attr_dev(div29, "class", "svelte-oxdj5w");
-    			add_location(div29, file, 1070, 0, 26326);
+    			attr_dev(input9, "class", "svelte-27ngvs");
+    			add_location(input9, file, 1378, 4, 43606);
+    			attr_dev(div26, "class", "scrubbing-bar svelte-27ngvs");
+    			add_location(div26, file, 1366, 3, 42789);
+    			attr_dev(div27, "class", "footer svelte-27ngvs");
+    			add_location(div27, file, 1365, 2, 42765);
+    			attr_dev(div28, "class", "main-content svelte-27ngvs");
+    			add_location(div28, file, 1082, 1, 27093);
+    			attr_dev(div29, "class", "svelte-27ngvs");
+    			add_location(div29, file, 1071, 0, 26331);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");

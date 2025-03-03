@@ -2,6 +2,7 @@
 	import { linear } from 'svelte/easing';
 	import { writable } from 'svelte/store';
 	
+	
 	let controlPoints = writable([]);
 	let paths = writable([]);
   
@@ -18,18 +19,18 @@
   
 	// Display dimensions (computed based on robotUnits)
 	$: displayLength = parseFloat((robotUnits === 'inches' ? robotLength : robotLength * 2.54).toFixed(2));
-$: displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2));
+	$: displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2));
   
 	// Functions to update robotLength and robotWidth
 	function updateRobotLength(value) {
-    const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
-}
+		const newValue = parseFloat(value) || 0; // Treat empty input as 0
+		robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+	}
 
-function updateRobotWidth(value) {
-    const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
-}
+	function updateRobotWidth(value) {
+		const newValue = parseFloat(value) || 0; // Treat empty input as 0
+		robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+	}
 
 
 	$: {
@@ -623,7 +624,7 @@ function updateRobotWidth(value) {
 		max-height: 80vh;
 		min-width: 40vh;
 		min-height: 40vh;
-		background: url('https://jwhof.github.io/jpather/good-field-image.png') no-repeat center center;
+		background: url('https://jwhof.github.io/jpather/assets/good-field-image.png') no-repeat center center;
 		background-size: cover;
 		border: 1px solid #ccc;
 	}
@@ -1157,7 +1158,7 @@ function updateRobotWidth(value) {
 							</div>
 							<div class="control-point-mini-box-x current-path">
 								<!-- svelte-ignore a11y-label-has-associated-control -->
-								<label class="cp-x" style="user-select:none;">Current Path:</label>
+								<label class="cp-x" style="user-select:none;font-weight:600;">Current Path:</label>
 								<input class="start-pos-box" type="number" step="0.001" value={currentPathIndex+1} readonly />
 							</div>
 								
@@ -1199,7 +1200,7 @@ function updateRobotWidth(value) {
 
 				
 				{#if $paths.length > 0}
-					<img src="./robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
+					<img src="./assets/robot.png" alt="Robot" id="robot" style="width: {robotWidth / 144 * 100}%; height: {robotLength / 144 * 100}%; left: {(robotX / 144) * 100}%; bottom: {(robotY / 144) * 100}%; user-select: none;" />
 				{/if}
 
 				{#if shouldShowHitbox}
