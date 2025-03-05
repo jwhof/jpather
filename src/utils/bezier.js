@@ -1,3 +1,13 @@
+const bezierCache = new Map();
+
+function getCachedBezier(t, controlPoints) {
+    const key = JSON.stringify({ t, controlPoints });
+    if (!bezierCache.has(key)) {
+        bezierCache.set(key, getPointAt(t, controlPoints));
+    }
+    return bezierCache.get(key);
+}
+
 export function factorial(n) {
     return n <= 1 ? 1 : n * factorial(n - 1);
 }
@@ -28,7 +38,6 @@ export function getPointAt(t, controlPoints) {
     return getPointAt(t, newPoints);
 }
 
-
 // Compute the tangent vector (first derivative)
 export function getDerivativeAt(t, controlPoints) {
     if (controlPoints.length < 2) return { x: 0, y: 0 };
@@ -40,7 +49,7 @@ export function getDerivativeAt(t, controlPoints) {
         derivatives.push({ x, y });
     }
 
-    return getPointAt(t, derivatives);
+    return getCachedBezier(t, derivatives);
 }
 
 // Compute the normal vector by rotating the tangent by 90°
@@ -53,7 +62,7 @@ export function getNormalAt(t, controlPoints) {
 
 // Compute offset points based on hitbox width
 export function getOffsetPointAt(t, controlPoints, width) {
-    const point = getPointAt(t, controlPoints);
+    const point = getCachedBezier(t, controlPoints);
     const normal = getNormalAt(t, controlPoints);
 
     return {
@@ -97,4 +106,3 @@ export function generateHitboxPath(controlPoints, width) {
     console.log("✅ Generated hitbox:", { leftPath, rightPath });
     return { leftPath, rightPath };
 }
-
