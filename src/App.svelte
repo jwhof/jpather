@@ -445,7 +445,41 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 	
 	function showCodeWindow() {
 		const codeWindow = window.open('', 'CodeWindow', 'width=600,height=400');
-		let codeContent = 'private Path ';
+
+		let codeContent = '';
+
+		if ($shouldHaveBoilerplate) {
+
+			codeContent += 'package pedroPathing.examples;\n\n';
+			codeContent += 'import com.pedropathing.follower.Follower;\n';
+			codeContent += 'import com.pedropathing.localization.Pose;\n';
+			codeContent += 'import com.pedropathing.pathgen.BezierCurve;\n';
+			codeContent += 'import com.pedropathing.pathgen.BezierLine;\n';
+			codeContent += 'import com.pedropathing.pathgen.Path;\n';
+			// codeContent += 'import com.pedropathing.pathgen.PathChain;\n';
+			codeContent += 'import com.pedropathing.pathgen.Point;\n';
+			codeContent += 'import com.pedropathing.util.Constants;\n';
+			codeContent += 'import com.pedropathing.util.Timer;\n';
+			codeContent += 'import com.qualcomm.robotcore.eventloop.opmode.Autonomous;\n';
+			codeContent += 'import com.qualcomm.robotcore.eventloop.opmode.OpMode;\n';
+			codeContent += 'import pedroPathing.constants.FConstants;\n';
+			codeContent += 'import pedroPathing.constants.LConstants;\n\n';
+			codeContent += '@Autonomous(name = "New Auto", group = "Examples")\n';
+			codeContent += 'public class NewAuto extends OpMode {\n\n';
+			codeContent += '    private Follower follower;\n';
+			codeContent += '    private Timer pathTimer, actionTimer, opmodeTimer;\n';
+			codeContent += '    private int pathState;\n\n';
+
+
+		}
+
+		codeContent += 'private final Pose startPose = new Pose(';
+		codeContent += robotX.toFixed(3) + ', ';
+		codeContent += robotY.toFixed(3) + ', ';
+		codeContent += rotationUnits === 'degrees' ? `Math.toRadians(${robotLiveAngle.toFixed(3)})` : robotLiveAngle.toFixed(3);
+		codeContent += ');\n\n';
+
+		codeContent += 'private Path ';
 
 		$paths.forEach((path, index) => {
 			codeContent += `p${index + 1}`;
@@ -480,13 +514,80 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			}
 		});
 
+		codeContent += '}\n\n';
+
+		if ($shouldHaveBoilerplate) {
+
+	// 	@Override
+	// 	public void start() {
+	// 		opmodeTimer.resetTimer();
+	// 		setPathState(0);
+	// 	}
+
+	// 	/** We do not use this because everything should automatically disable **/
+	// 	@Override
+	// 	public void stop() {
+	// 	}
+	// }
+
+		codeContent += 'public void autonomousPathUpdate() {\n';
+		codeContent += '    switch (pathState) {\n';
+
+		$paths.forEach((path, index) => {
+			codeContent += `        case ${index*10}:\n`;
+			codeContent += `            follower.followPath(p${index + 1});\n`;
+			codeContent += `            setPathState(${(index + 1)*10});\n`;
+			codeContent += `            break;\n\n`;
+		});
+
+		codeContent += '    }\n';
+		codeContent += '}\n\n';
+
+		codeContent += 'public void setPathState(int pState) {\n';
+		codeContent += '    pathState = pState;\n';
+		codeContent += '    pathTimer.resetTimer();\n';
+		codeContent += '}\n\n';
+
+		codeContent += 'public void loop() {\n';
+		codeContent += '    follower.update();\n';
+		codeContent += '    autonomousPathUpdate();\n';
+		codeContent += '    telemetry.addData("path state", pathState);\n';
+		codeContent += '    telemetry.addData("x", follower.getPose().getX());\n';
+		codeContent += '    telemetry.addData("y", follower.getPose().getY());\n';
+		codeContent += '    telemetry.addData("heading", follower.getPose().getHeading());\n';
+		codeContent += '    telemetry.update();\n';
+		codeContent += '}\n\n';
+
+		codeContent += 'public void init() {\n';
+		codeContent += '    pathTimer = new Timer();\n';
+		codeContent += '    opmodeTimer = new Timer();\n';
+		codeContent += '    opmodeTimer.resetTimer();\n\n';
+		codeContent += '    Constants.setConstants(FConstants.class, LConstants.class);\n';
+		codeContent += '    follower = new Follower(hardwareMap);\n';
+		codeContent += '    follower.setStartingPose(startPose);\n';
+		codeContent += '    buildPaths();\n';
+		codeContent += '}\n\n';
+
+		codeContent += 'public void init_loop() {}\n\n';
+
+		codeContent += 'public void start() {\n';
+		codeContent += '    opmodeTimer.resetTimer();\n';
+		codeContent += '    setPathState(0);\n';
+		codeContent += '}\n\n';
+
+		codeContent += 'public void stop() {}\n\n';
+
 		codeContent += '}';
+
+		}
+
 
 		codeWindow.document.write('<pre>' + codeContent + '</pre>');
 		codeWindow.document.close();
 	}
 
 	export let shouldShowHitbox = writable(false);
+	export let shouldHaveBoilerplate = writable(false);
     export let paths = writable([]);
 
     let offsetPaths = [];
@@ -1111,6 +1212,11 @@ $: {
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Show Robot Hitbox: </label>
 							<input id="auto-link-paths" type="checkbox" bind:checked={$shouldShowHitbox} />
+						</div>
+
+						<div class="advanced-options">
+							<label for="field-length" style="user-select:none;">New Auto Boilerplate: </label>
+							<input id="auto-link-paths" type="checkbox" bind:checked={$shouldHaveBoilerplate} />
 						</div>
 
 						<div class="advanced-options">
