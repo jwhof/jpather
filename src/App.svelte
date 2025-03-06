@@ -567,7 +567,7 @@ $: {
 		max-height: 80vh;
 		min-width: 40vh;
 		min-height: 40vh;
-		background: url('https://jwhof.github.io/jpather/good-field-image.png') no-repeat center center;
+		background: url('https://jwhof.github.io/jpather/assets/good-field-image.png') no-repeat center center; 
 		background-size: cover;
 		border: 1px solid #ccc;
 	}
