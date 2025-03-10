@@ -7,21 +7,55 @@ class Path {
         this.bezierCurvePoints = this.calculateBezier();
     }
 
-    getRandomBrightColor() {
-		const r = Math.floor(Math.random() * 128 + 128);
-		const g = Math.floor(Math.random() * 128 + 128);
-		const b = Math.floor(Math.random() * 128 + 128);
-		return `rgb(${r}, ${g}, ${b})`;
-	}
 
-    calculateBezier(steps = 100) {
+    static revive(obj) {
+        const path = new Path(obj.id);
+        path.controlPoints = obj.controlPoints;
+        path.color = obj.color;
+        path.robotHeading = obj.robotHeading;
+        path.startAngleDegrees = obj.startAngleDegrees;
+        path.endAngleDegrees = obj.endAngleDegrees;
+        path.constantAngleDegrees = obj.constantAngleDegrees;
+        path.reverse = obj.reverse;
+        path.bezierCurvePoints = obj.bezierCurvePoints;
+        return path;
+      }
+
+      
+    getRandomBrightColor() {
+        const r = Math.floor(Math.random() * 128 + 128);
+        const g = Math.floor(Math.random() * 128 + 128);
+        const b = Math.floor(Math.random() * 128 + 128);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    calculateBezier() {
         if (this.controlPoints.length < 2) return [];
         let curve = [];
-        for (let t = 0; t <= 1; t += 1 / steps) {
-            curve.push(this.deCasteljau(this.controlPoints, t));
-        }
-        curve.push(this.controlPoints[this.controlPoints.length - 1]);
+        this.subdivideAdaptive(this.controlPoints, 0, 1, curve);
         return curve;
+    }
+
+    subdivideAdaptive(controlPoints, tStart, tEnd, curve, threshold = 0.001) {
+        const midT = (tStart + tEnd) / 2;
+        const pStart = this.deCasteljau(controlPoints, tStart);
+        const pEnd = this.deCasteljau(controlPoints, tEnd);
+        const pMid = this.deCasteljau(controlPoints, midT);
+
+        const linearMid = {
+            x: (pStart.x + pEnd.x) / 2,
+            y: (pStart.y + pEnd.y) / 2
+        };
+
+        const error = Math.sqrt((pMid.x - linearMid.x) ** 2 + (pMid.y - linearMid.y) ** 2);
+
+        if (error > threshold) {
+            this.subdivideAdaptive(controlPoints, tStart, midT, curve, threshold);
+            this.subdivideAdaptive(controlPoints, midT, tEnd, curve, threshold);
+        } else {
+            curve.push(pStart);
+            curve.push(pEnd);
+        }
     }
 
     deCasteljau(points, t) {
@@ -56,5 +90,4 @@ class Path {
     }
 }
 
-// Make sure to use **default** export
 export default Path;

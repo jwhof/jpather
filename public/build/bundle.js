@@ -47,6 +47,9 @@ var app = (function () {
         const unsub = store.subscribe(...callbacks);
         return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
     }
+    function component_subscribe(component, store, callback) {
+        component.$$.on_destroy.push(subscribe(store, callback));
+    }
     function set_store_value(store, ret, value) {
         store.set(value);
         return ret;
@@ -491,6 +494,16 @@ var app = (function () {
 
     const subscriber_queue = [];
     /**
+     * Creates a `Readable` store that allows reading by subscription.
+     * @param value initial value
+     * @param {StartStopNotifier} [start]
+     */
+    function readable(value, start) {
+        return {
+            subscribe: writable(value, start).subscribe
+        };
+    }
+    /**
      * Create a `Writable` store that allows both updating and reading by subscription.
      * @param {*=}value initial value
      * @param {StartStopNotifier=} start
@@ -536,6 +549,51 @@ var app = (function () {
         }
         return { set, update, subscribe };
     }
+    function derived(stores, fn, initial_value) {
+        const single = !Array.isArray(stores);
+        const stores_array = single
+            ? [stores]
+            : stores;
+        const auto = fn.length < 2;
+        return readable(initial_value, (set) => {
+            let started = false;
+            const values = [];
+            let pending = 0;
+            let cleanup = noop;
+            const sync = () => {
+                if (pending) {
+                    return;
+                }
+                cleanup();
+                const result = fn(single ? values[0] : values, set);
+                if (auto) {
+                    set(result);
+                }
+                else {
+                    cleanup = is_function(result) ? result : noop;
+                }
+            };
+            const unsubscribers = stores_array.map((store, i) => subscribe(store, (value) => {
+                values[i] = value;
+                pending &= ~(1 << i);
+                if (started) {
+                    sync();
+                }
+            }, () => {
+                pending |= (1 << i);
+            }));
+            started = true;
+            sync();
+            return function stop() {
+                run_all(unsubscribers);
+                cleanup();
+                // We need to set this to false because callbacks can still happen despite having unsubscribed:
+                // Callbacks might already be placed in the queue which doesn't know it should no longer
+                // invoke this derived store.
+                started = false;
+            };
+        });
+    }
 
     class Path {
         constructor(id, controlPoints = [], color = this.getRandomBrightColor(), robotHeading = 'constant') {
@@ -546,21 +604,55 @@ var app = (function () {
             this.bezierCurvePoints = this.calculateBezier();
         }
 
-        getRandomBrightColor() {
-    		const r = Math.floor(Math.random() * 128 + 128);
-    		const g = Math.floor(Math.random() * 128 + 128);
-    		const b = Math.floor(Math.random() * 128 + 128);
-    		return `rgb(${r}, ${g}, ${b})`;
-    	}
 
-        calculateBezier(steps = 100) {
+        static revive(obj) {
+            const path = new Path(obj.id);
+            path.controlPoints = obj.controlPoints;
+            path.color = obj.color;
+            path.robotHeading = obj.robotHeading;
+            path.startAngleDegrees = obj.startAngleDegrees;
+            path.endAngleDegrees = obj.endAngleDegrees;
+            path.constantAngleDegrees = obj.constantAngleDegrees;
+            path.reverse = obj.reverse;
+            path.bezierCurvePoints = obj.bezierCurvePoints;
+            return path;
+          }
+
+          
+        getRandomBrightColor() {
+            const r = Math.floor(Math.random() * 128 + 128);
+            const g = Math.floor(Math.random() * 128 + 128);
+            const b = Math.floor(Math.random() * 128 + 128);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        calculateBezier() {
             if (this.controlPoints.length < 2) return [];
             let curve = [];
-            for (let t = 0; t <= 1; t += 1 / steps) {
-                curve.push(this.deCasteljau(this.controlPoints, t));
-            }
-            curve.push(this.controlPoints[this.controlPoints.length - 1]);
+            this.subdivideAdaptive(this.controlPoints, 0, 1, curve);
             return curve;
+        }
+
+        subdivideAdaptive(controlPoints, tStart, tEnd, curve, threshold = 0.001) {
+            const midT = (tStart + tEnd) / 2;
+            const pStart = this.deCasteljau(controlPoints, tStart);
+            const pEnd = this.deCasteljau(controlPoints, tEnd);
+            const pMid = this.deCasteljau(controlPoints, midT);
+
+            const linearMid = {
+                x: (pStart.x + pEnd.x) / 2,
+                y: (pStart.y + pEnd.y) / 2
+            };
+
+            const error = Math.sqrt((pMid.x - linearMid.x) ** 2 + (pMid.y - linearMid.y) ** 2);
+
+            if (error > threshold) {
+                this.subdivideAdaptive(controlPoints, tStart, midT, curve, threshold);
+                this.subdivideAdaptive(controlPoints, midT, tEnd, curve, threshold);
+            } else {
+                curve.push(pStart);
+                curve.push(pEnd);
+            }
         }
 
         deCasteljau(points, t) {
@@ -595,6 +687,48 @@ var app = (function () {
         }
     }
 
+    const persistStore = (key, initialValue) => {
+        const revivePaths = (value) => value.map(p => Path.revive(p));
+        
+        const storedValue = localStorage.getItem(key);
+        let parsedValue;
+        
+        try {
+          parsedValue = storedValue 
+            ? key === 'paths'
+              ? revivePaths(JSON.parse(storedValue))
+              : JSON.parse(storedValue)
+            : initialValue;
+        } catch {
+          parsedValue = initialValue;
+        }
+      
+        const store = writable(parsedValue);
+        store.subscribe(value => {
+          localStorage.setItem(key, JSON.stringify(value));
+        });
+        return store;
+      };
+
+
+    const paths = persistStore('paths', []);
+    const robotLength = persistStore('robotLength', 18);
+    const robotWidth = persistStore('robotWidth', 18);
+    const robotUnits = persistStore('robotUnits', 'inches');
+    const rotationUnits = persistStore('rotationUnits', 'degrees');
+    const shouldShowHitbox = persistStore('shouldShowHitbox', false);
+    const shouldHaveBoilerplate = persistStore('shouldHaveBoilerplate', false);
+    const autoLinkPaths = persistStore('autoLinkPaths', true);
+    const shouldRepeatPath = persistStore('shouldRepeatPath', true);
+
+    const displayDimensions = derived(
+      [robotLength, robotWidth, robotUnits],
+      ([$length, $width, $units]) => ({
+        displayLength: parseFloat(($units === 'inches' ? $length : $length * 2.54).toFixed(2)),
+        displayWidth: parseFloat(($units === 'inches' ? $width : $width * 2.54).toFixed(2))
+      })
+    );
+
     const bezierCache = new Map();
 
     function getCachedBezier(t, controlPoints) {
@@ -605,10 +739,8 @@ var app = (function () {
         return bezierCache.get(key);
     }
 
-    // Compute a point on a Bézier curve using De Casteljau’s algorithm
     function getPointAt(t, controlPoints) {
         if (controlPoints.length === 2) {
-            // ✅ Linear interpolation for 2-point paths (NO recursion!)
             return {
                 x: (1 - t) * controlPoints[0].x + t * controlPoints[1].x,
                 y: (1 - t) * controlPoints[0].y + t * controlPoints[1].y
@@ -616,11 +748,9 @@ var app = (function () {
         }
 
         if (controlPoints.length === 1) {
-            // Edge case: Just return the single point
             return controlPoints[0];
         }
 
-        // ✅ De Casteljau's algorithm for 3+ points (NO infinite recursion)
         let newPoints = [];
         for (let i = 0; i < controlPoints.length - 1; i++) {
             let x = (1 - t) * controlPoints[i].x + t * controlPoints[i + 1].x;
@@ -631,7 +761,6 @@ var app = (function () {
         return getPointAt(t, newPoints);
     }
 
-    // Compute the tangent vector (first derivative)
     function getDerivativeAt(t, controlPoints) {
         if (controlPoints.length < 2) return { x: 0, y: 0 };
 
@@ -645,15 +774,13 @@ var app = (function () {
         return getCachedBezier(t, derivatives);
     }
 
-    // Compute the normal vector by rotating the tangent by 90°
     function getNormalAt(t, controlPoints) {
         const tangent = getDerivativeAt(t, controlPoints);
         const length = Math.sqrt(tangent.x ** 2 + tangent.y ** 2);
-        if (length === 0) return { x: 0, y: 0 }; // Prevent division by zero
-        return { x: -tangent.y / length, y: tangent.x / length }; // Rotate by 90 degrees
+        if (length === 0) return { x: 0, y: 0 }; 
+        return { x: -tangent.y / length, y: tangent.x / length }; 
     }
 
-    // Compute offset points based on hitbox width
     function getOffsetPointAt(t, controlPoints, width) {
         const point = getCachedBezier(t, controlPoints);
         const normal = getNormalAt(t, controlPoints);
@@ -664,7 +791,6 @@ var app = (function () {
         };
     }
 
-    // Generate hitbox paths for any degree Bézier curve
     function generateHitboxPath(controlPoints, width) {
         if (controlPoints.length < 2) {
             console.warn(`⚠️ Skipping hitbox: Not enough control points (${controlPoints.length} found)`);
@@ -707,46 +833,46 @@ var app = (function () {
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[11] = list[i];
-    	child_ctx[87] = list;
-    	child_ctx[88] = i;
+    	child_ctx[6] = list[i];
+    	child_ctx[86] = list;
+    	child_ctx[87] = i;
     	return child_ctx;
     }
 
     function get_each_context_1(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[89] = list[i].x;
-    	child_ctx[90] = list[i].y;
-    	child_ctx[92] = i;
+    	child_ctx[88] = list[i].x;
+    	child_ctx[89] = list[i].y;
+    	child_ctx[91] = i;
     	return child_ctx;
     }
 
     function get_each_context_2(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[11] = list[i];
+    	child_ctx[6] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_3(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[11] = list[i];
+    	child_ctx[6] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_4(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[11] = list[i];
+    	child_ctx[6] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_5(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[89] = list[i].x;
-    	child_ctx[90] = list[i].y;
+    	child_ctx[88] = list[i].x;
+    	child_ctx[89] = list[i].y;
     	return child_ctx;
     }
 
-    // (1169:8) {#if $paths.length > 0}
+    // (1177:8) {#if $paths.length > 0}
     function create_if_block_14(ctx) {
     	let input;
     	let mounted;
@@ -755,27 +881,27 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-1pbflzg");
+    			attr_dev(input, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "1");
-    			add_location(input, file, 1169, 8, 30840);
+    			add_location(input, file, 1177, 8, 30610);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
-    			set_input_value(input, /*$paths*/ ctx[10][0].controlPoints[0].x);
+    			set_input_value(input, /*$paths*/ ctx[4][0].controlPoints[0].x);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(input, "input", /*input_input_handler*/ ctx[42]),
-    					listen_dev(input, "input", /*input_handler_2*/ ctx[43], false, false, false, false)
+    					listen_dev(input, "input", /*input_input_handler*/ ctx[41]),
+    					listen_dev(input, "input", /*input_handler_2*/ ctx[42], false, false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024 && to_number(input.value) !== /*$paths*/ ctx[10][0].controlPoints[0].x) {
-    				set_input_value(input, /*$paths*/ ctx[10][0].controlPoints[0].x);
+    			if (dirty[0] & /*$paths*/ 16 && to_number(input.value) !== /*$paths*/ ctx[4][0].controlPoints[0].x) {
+    				set_input_value(input, /*$paths*/ ctx[4][0].controlPoints[0].x);
     			}
     		},
     		d: function destroy(detaching) {
@@ -789,14 +915,14 @@ var app = (function () {
     		block,
     		id: create_if_block_14.name,
     		type: "if",
-    		source: "(1169:8) {#if $paths.length > 0}",
+    		source: "(1177:8) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1176:8) {#if $paths.length > 0}
+    // (1184:8) {#if $paths.length > 0}
     function create_if_block_13(ctx) {
     	let input;
     	let mounted;
@@ -805,27 +931,27 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			input = element("input");
-    			attr_dev(input, "class", "start-pos-box svelte-1pbflzg");
+    			attr_dev(input, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "1");
-    			add_location(input, file, 1176, 8, 31327);
+    			add_location(input, file, 1184, 8, 31097);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, input, anchor);
-    			set_input_value(input, /*$paths*/ ctx[10][0].controlPoints[0].y);
+    			set_input_value(input, /*$paths*/ ctx[4][0].controlPoints[0].y);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(input, "input", /*input_input_handler_1*/ ctx[44]),
-    					listen_dev(input, "input", /*input_handler_3*/ ctx[45], false, false, false, false)
+    					listen_dev(input, "input", /*input_input_handler_1*/ ctx[43]),
+    					listen_dev(input, "input", /*input_handler_3*/ ctx[44], false, false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024 && to_number(input.value) !== /*$paths*/ ctx[10][0].controlPoints[0].y) {
-    				set_input_value(input, /*$paths*/ ctx[10][0].controlPoints[0].y);
+    			if (dirty[0] & /*$paths*/ 16 && to_number(input.value) !== /*$paths*/ ctx[4][0].controlPoints[0].y) {
+    				set_input_value(input, /*$paths*/ ctx[4][0].controlPoints[0].y);
     			}
     		},
     		d: function destroy(detaching) {
@@ -839,14 +965,14 @@ var app = (function () {
     		block,
     		id: create_if_block_13.name,
     		type: "if",
-    		source: "(1176:8) {#if $paths.length > 0}",
+    		source: "(1184:8) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1243:5) {#each path.controlPoints as { x, y }}
+    // (1251:5) {#each path.controlPoints as { x, y }}
     function create_each_block_5(ctx) {
     	let div1;
     	let div0;
@@ -857,13 +983,13 @@ var app = (function () {
     			div1 = element("div");
     			div0 = element("div");
     			t = space();
-    			attr_dev(div0, "class", "point svelte-1pbflzg");
-    			set_style(div0, "left", /*x*/ ctx[89] / 144 * 100 + "%");
-    			set_style(div0, "bottom", /*y*/ ctx[90] / 144 * 100 + "%");
-    			set_style(div0, "background", /*path*/ ctx[11].color);
-    			add_location(div0, file, 1244, 7, 34637);
-    			attr_dev(div1, "class", "hover-point svelte-1pbflzg");
-    			add_location(div1, file, 1243, 6, 34604);
+    			attr_dev(div0, "class", "point svelte-lezlw2");
+    			set_style(div0, "left", /*x*/ ctx[88] / 144 * 100 + "%");
+    			set_style(div0, "bottom", /*y*/ ctx[89] / 144 * 100 + "%");
+    			set_style(div0, "background", /*path*/ ctx[6].color);
+    			add_location(div0, file, 1252, 7, 34442);
+    			attr_dev(div1, "class", "hover-point svelte-lezlw2");
+    			add_location(div1, file, 1251, 6, 34409);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div1, anchor);
@@ -871,16 +997,16 @@ var app = (function () {
     			append_dev(div1, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(div0, "left", /*x*/ ctx[89] / 144 * 100 + "%");
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(div0, "left", /*x*/ ctx[88] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(div0, "bottom", /*y*/ ctx[90] / 144 * 100 + "%");
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(div0, "bottom", /*y*/ ctx[89] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(div0, "background", /*path*/ ctx[11].color);
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(div0, "background", /*path*/ ctx[6].color);
     			}
     		},
     		d: function destroy(detaching) {
@@ -892,17 +1018,17 @@ var app = (function () {
     		block,
     		id: create_each_block_5.name,
     		type: "each",
-    		source: "(1243:5) {#each path.controlPoints as { x, y }}",
+    		source: "(1251:5) {#each path.controlPoints as { x, y }}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1242:4) {#each $paths as path}
+    // (1250:4) {#each $paths as path}
     function create_each_block_4(ctx) {
     	let each_1_anchor;
-    	let each_value_5 = /*path*/ ctx[11].controlPoints;
+    	let each_value_5 = /*path*/ ctx[6].controlPoints;
     	validate_each_argument(each_value_5);
     	let each_blocks = [];
 
@@ -928,8 +1054,8 @@ var app = (function () {
     			insert_dev(target, each_1_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				each_value_5 = /*path*/ ctx[11].controlPoints;
+    			if (dirty[0] & /*$paths*/ 16) {
+    				each_value_5 = /*path*/ ctx[6].controlPoints;
     				validate_each_argument(each_value_5);
     				let i;
 
@@ -962,14 +1088,14 @@ var app = (function () {
     		block,
     		id: create_each_block_4.name,
     		type: "each",
-    		source: "(1242:4) {#each $paths as path}",
+    		source: "(1250:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1251:4) {#if $paths.length > 0}
+    // (1259:4) {#if $paths.length > 0}
     function create_if_block_12(ctx) {
     	let img;
     	let img_src_value;
@@ -980,33 +1106,33 @@ var app = (function () {
     			if (!src_url_equal(img.src, img_src_value = "./assets/robot.png")) attr_dev(img, "src", img_src_value);
     			attr_dev(img, "alt", "Robot");
     			attr_dev(img, "id", "robot");
-    			set_style(img, "width", /*robotWidth*/ ctx[4] / 144 * 100 + "%");
-    			set_style(img, "height", /*robotLength*/ ctx[3] / 144 * 100 + "%");
-    			set_style(img, "left", /*robotX*/ ctx[12] / 144 * 100 + "%");
-    			set_style(img, "bottom", /*robotY*/ ctx[13] / 144 * 100 + "%");
+    			set_style(img, "width", /*$robotWidth*/ ctx[3] / 144 * 100 + "%");
+    			set_style(img, "height", /*$robotLength*/ ctx[14] / 144 * 100 + "%");
+    			set_style(img, "left", /*robotX*/ ctx[7] / 144 * 100 + "%");
+    			set_style(img, "bottom", /*robotY*/ ctx[8] / 144 * 100 + "%");
     			set_style(img, "user-select", "none");
     			set_style(img, "position", "absolute");
-    			attr_dev(img, "class", "svelte-1pbflzg");
-    			add_location(img, file, 1251, 5, 34855);
+    			attr_dev(img, "class", "svelte-lezlw2");
+    			add_location(img, file, 1259, 5, 34660);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, img, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*robotWidth*/ 16) {
-    				set_style(img, "width", /*robotWidth*/ ctx[4] / 144 * 100 + "%");
+    			if (dirty[0] & /*$robotWidth*/ 8) {
+    				set_style(img, "width", /*$robotWidth*/ ctx[3] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotLength*/ 8) {
-    				set_style(img, "height", /*robotLength*/ ctx[3] / 144 * 100 + "%");
+    			if (dirty[0] & /*$robotLength*/ 16384) {
+    				set_style(img, "height", /*$robotLength*/ ctx[14] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotX*/ 4096) {
-    				set_style(img, "left", /*robotX*/ ctx[12] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotX*/ 128) {
+    				set_style(img, "left", /*robotX*/ ctx[7] / 144 * 100 + "%");
     			}
 
-    			if (dirty[0] & /*robotY*/ 8192) {
-    				set_style(img, "bottom", /*robotY*/ ctx[13] / 144 * 100 + "%");
+    			if (dirty[0] & /*robotY*/ 256) {
+    				set_style(img, "bottom", /*robotY*/ ctx[8] / 144 * 100 + "%");
     			}
     		},
     		d: function destroy(detaching) {
@@ -1018,17 +1144,17 @@ var app = (function () {
     		block,
     		id: create_if_block_12.name,
     		type: "if",
-    		source: "(1251:4) {#if $paths.length > 0}",
+    		source: "(1259:4) {#if $paths.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1268:5) {#if $shouldShowHitbox}
+    // (1276:5) {#if $shouldShowHitbox}
     function create_if_block_10(ctx) {
     	let each_1_anchor;
-    	let each_value_3 = /*offsetPaths*/ ctx[9];
+    	let each_value_3 = /*offsetPaths*/ ctx[2];
     	validate_each_argument(each_value_3);
     	let each_blocks = [];
 
@@ -1054,8 +1180,8 @@ var app = (function () {
     			insert_dev(target, each_1_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 512) {
-    				each_value_3 = /*offsetPaths*/ ctx[9];
+    			if (dirty[0] & /*offsetPaths*/ 4) {
+    				each_value_3 = /*offsetPaths*/ ctx[2];
     				validate_each_argument(each_value_3);
     				let i;
 
@@ -1088,14 +1214,14 @@ var app = (function () {
     		block,
     		id: create_if_block_10.name,
     		type: "if",
-    		source: "(1268:5) {#if $shouldShowHitbox}",
+    		source: "(1276:5) {#if $shouldShowHitbox}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1270:7) {#if path.left.length > 0 && path.right.length > 0}
+    // (1278:7) {#if path.left.length > 0 && path.right.length > 0}
     function create_if_block_11(ctx) {
     	let polygon;
     	let polygon_points_value;
@@ -1111,25 +1237,25 @@ var app = (function () {
     			polygon = svg_element("polygon");
     			path0 = svg_element("path");
     			path1 = svg_element("path");
-    			attr_dev(polygon, "points", polygon_points_value = /*path*/ ctx[11].left.map(func).join(' ') + ' ' + /*path*/ ctx[11].right.reverse().map(func_1).join(' '));
+    			attr_dev(polygon, "points", polygon_points_value = /*path*/ ctx[6].left.map(func).join(' ') + ' ' + /*path*/ ctx[6].right.reverse().map(func_1).join(' '));
     			attr_dev(polygon, "fill", "rgba(255, 255, 255, 0.2)");
     			attr_dev(polygon, "stroke", "none");
-    			attr_dev(polygon, "class", "svelte-1pbflzg");
-    			add_location(polygon, file, 1270, 8, 35452);
-    			attr_dev(path0, "d", path0_d_value = "M " + /*path*/ ctx[11].left.map(func_2).join(' '));
-    			attr_dev(path0, "stroke", path0_stroke_value = /*path*/ ctx[11].color);
+    			attr_dev(polygon, "class", "svelte-lezlw2");
+    			add_location(polygon, file, 1278, 8, 35259);
+    			attr_dev(path0, "d", path0_d_value = "M " + /*path*/ ctx[6].left.map(func_2).join(' '));
+    			attr_dev(path0, "stroke", path0_stroke_value = /*path*/ ctx[6].color);
     			attr_dev(path0, "fill", "none");
     			attr_dev(path0, "stroke-width", "1");
     			attr_dev(path0, "opacity", "0.4");
-    			attr_dev(path0, "class", "svelte-1pbflzg");
-    			add_location(path0, file, 1278, 8, 35719);
-    			attr_dev(path1, "d", path1_d_value = "M " + /*path*/ ctx[11].right.map(func_3).join(' '));
-    			attr_dev(path1, "stroke", path1_stroke_value = /*path*/ ctx[11].color);
+    			attr_dev(path0, "class", "svelte-lezlw2");
+    			add_location(path0, file, 1286, 8, 35526);
+    			attr_dev(path1, "d", path1_d_value = "M " + /*path*/ ctx[6].right.map(func_3).join(' '));
+    			attr_dev(path1, "stroke", path1_stroke_value = /*path*/ ctx[6].color);
     			attr_dev(path1, "fill", "none");
     			attr_dev(path1, "stroke-width", "1");
     			attr_dev(path1, "opacity", "0.4");
-    			attr_dev(path1, "class", "svelte-1pbflzg");
-    			add_location(path1, file, 1280, 8, 35868);
+    			attr_dev(path1, "class", "svelte-lezlw2");
+    			add_location(path1, file, 1288, 8, 35675);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, polygon, anchor);
@@ -1137,23 +1263,23 @@ var app = (function () {
     			insert_dev(target, path1, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 512 && polygon_points_value !== (polygon_points_value = /*path*/ ctx[11].left.map(func).join(' ') + ' ' + /*path*/ ctx[11].right.reverse().map(func_1).join(' '))) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && polygon_points_value !== (polygon_points_value = /*path*/ ctx[6].left.map(func).join(' ') + ' ' + /*path*/ ctx[6].right.reverse().map(func_1).join(' '))) {
     				attr_dev(polygon, "points", polygon_points_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512 && path0_d_value !== (path0_d_value = "M " + /*path*/ ctx[11].left.map(func_2).join(' '))) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path0_d_value !== (path0_d_value = "M " + /*path*/ ctx[6].left.map(func_2).join(' '))) {
     				attr_dev(path0, "d", path0_d_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512 && path0_stroke_value !== (path0_stroke_value = /*path*/ ctx[11].color)) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path0_stroke_value !== (path0_stroke_value = /*path*/ ctx[6].color)) {
     				attr_dev(path0, "stroke", path0_stroke_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512 && path1_d_value !== (path1_d_value = "M " + /*path*/ ctx[11].right.map(func_3).join(' '))) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path1_d_value !== (path1_d_value = "M " + /*path*/ ctx[6].right.map(func_3).join(' '))) {
     				attr_dev(path1, "d", path1_d_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512 && path1_stroke_value !== (path1_stroke_value = /*path*/ ctx[11].color)) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path1_stroke_value !== (path1_stroke_value = /*path*/ ctx[6].color)) {
     				attr_dev(path1, "stroke", path1_stroke_value);
     			}
     		},
@@ -1168,17 +1294,17 @@ var app = (function () {
     		block,
     		id: create_if_block_11.name,
     		type: "if",
-    		source: "(1270:7) {#if path.left.length > 0 && path.right.length > 0}",
+    		source: "(1278:7) {#if path.left.length > 0 && path.right.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1269:6) {#each offsetPaths as path}
+    // (1277:6) {#each offsetPaths as path}
     function create_each_block_3(ctx) {
     	let if_block_anchor;
-    	let if_block = /*path*/ ctx[11].left.length > 0 && /*path*/ ctx[11].right.length > 0 && create_if_block_11(ctx);
+    	let if_block = /*path*/ ctx[6].left.length > 0 && /*path*/ ctx[6].right.length > 0 && create_if_block_11(ctx);
 
     	const block = {
     		c: function create() {
@@ -1190,7 +1316,7 @@ var app = (function () {
     			insert_dev(target, if_block_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (/*path*/ ctx[11].left.length > 0 && /*path*/ ctx[11].right.length > 0) {
+    			if (/*path*/ ctx[6].left.length > 0 && /*path*/ ctx[6].right.length > 0) {
     				if (if_block) {
     					if_block.p(ctx, dirty);
     				} else {
@@ -1213,14 +1339,14 @@ var app = (function () {
     		block,
     		id: create_each_block_3.name,
     		type: "each",
-    		source: "(1269:6) {#each offsetPaths as path}",
+    		source: "(1277:6) {#each offsetPaths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1289:6) {#if path.main.length > 0}
+    // (1297:6) {#if path.main.length > 0}
     function create_if_block_9(ctx) {
     	let path_1;
     	let path_1_d_value;
@@ -1229,22 +1355,22 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			path_1 = svg_element("path");
-    			attr_dev(path_1, "d", path_1_d_value = "M " + /*path*/ ctx[11].main.map(func_4).join(' '));
-    			attr_dev(path_1, "stroke", path_1_stroke_value = /*path*/ ctx[11].color);
+    			attr_dev(path_1, "d", path_1_d_value = "M " + /*path*/ ctx[6].main.map(func_4).join(' '));
+    			attr_dev(path_1, "stroke", path_1_stroke_value = /*path*/ ctx[6].color);
     			attr_dev(path_1, "fill", "none");
     			attr_dev(path_1, "stroke-width", "1");
-    			attr_dev(path_1, "class", "svelte-1pbflzg");
-    			add_location(path_1, file, 1289, 7, 36158);
+    			attr_dev(path_1, "class", "svelte-lezlw2");
+    			add_location(path_1, file, 1297, 7, 35965);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, path_1, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*offsetPaths*/ 512 && path_1_d_value !== (path_1_d_value = "M " + /*path*/ ctx[11].main.map(func_4).join(' '))) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path_1_d_value !== (path_1_d_value = "M " + /*path*/ ctx[6].main.map(func_4).join(' '))) {
     				attr_dev(path_1, "d", path_1_d_value);
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512 && path_1_stroke_value !== (path_1_stroke_value = /*path*/ ctx[11].color)) {
+    			if (dirty[0] & /*offsetPaths*/ 4 && path_1_stroke_value !== (path_1_stroke_value = /*path*/ ctx[6].color)) {
     				attr_dev(path_1, "stroke", path_1_stroke_value);
     			}
     		},
@@ -1257,17 +1383,17 @@ var app = (function () {
     		block,
     		id: create_if_block_9.name,
     		type: "if",
-    		source: "(1289:6) {#if path.main.length > 0}",
+    		source: "(1297:6) {#if path.main.length > 0}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1288:5) {#each offsetPaths as path}
+    // (1296:5) {#each offsetPaths as path}
     function create_each_block_2(ctx) {
     	let if_block_anchor;
-    	let if_block = /*path*/ ctx[11].main.length > 0 && create_if_block_9(ctx);
+    	let if_block = /*path*/ ctx[6].main.length > 0 && create_if_block_9(ctx);
 
     	const block = {
     		c: function create() {
@@ -1279,7 +1405,7 @@ var app = (function () {
     			insert_dev(target, if_block_anchor, anchor);
     		},
     		p: function update(ctx, dirty) {
-    			if (/*path*/ ctx[11].main.length > 0) {
+    			if (/*path*/ ctx[6].main.length > 0) {
     				if (if_block) {
     					if_block.p(ctx, dirty);
     				} else {
@@ -1302,14 +1428,14 @@ var app = (function () {
     		block,
     		id: create_each_block_2.name,
     		type: "each",
-    		source: "(1288:5) {#each offsetPaths as path}",
+    		source: "(1296:5) {#each offsetPaths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1329:62) 
+    // (1337:62) 
     function create_if_block_8(ctx) {
     	let label;
     	let t0;
@@ -1321,12 +1447,12 @@ var app = (function () {
     		c: function create() {
     			label = element("label");
     			t0 = text("Control Point ");
-    			t1 = text(/*i*/ ctx[92]);
+    			t1 = text(/*i*/ ctx[91]);
     			t2 = text(":");
-    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92]);
+    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-1pbflzg");
-    			add_location(label, file, 1329, 11, 40105);
+    			attr_dev(label, "class", "svelte-lezlw2");
+    			add_location(label, file, 1337, 11, 39912);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
@@ -1335,7 +1461,7 @@ var app = (function () {
     			append_dev(label, t2);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92])) {
+    			if (dirty[0] & /*$paths*/ 16 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91])) {
     				attr_dev(label, "for", label_for_value);
     			}
     		},
@@ -1348,14 +1474,14 @@ var app = (function () {
     		block,
     		id: create_if_block_8.name,
     		type: "if",
-    		source: "(1329:62) ",
+    		source: "(1337:62) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1327:10) {#if (i == 0)}
+    // (1335:10) {#if (i == 0)}
     function create_if_block_7(ctx) {
     	let label;
     	let t;
@@ -1365,17 +1491,17 @@ var app = (function () {
     		c: function create() {
     			label = element("label");
     			t = text("Endpoint:");
-    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92]);
+    			attr_dev(label, "for", label_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91]);
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-1pbflzg");
-    			add_location(label, file, 1327, 11, 39946);
+    			attr_dev(label, "class", "svelte-lezlw2");
+    			add_location(label, file, 1335, 11, 39753);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, label, anchor);
     			append_dev(label, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*$paths*/ 1024 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92])) {
+    			if (dirty[0] & /*$paths*/ 16 && label_for_value !== (label_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91])) {
     				attr_dev(label, "for", label_for_value);
     			}
     		},
@@ -1388,14 +1514,14 @@ var app = (function () {
     		block,
     		id: create_if_block_7.name,
     		type: "if",
-    		source: "(1327:10) {#if (i == 0)}",
+    		source: "(1335:10) {#if (i == 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1353:27) 
+    // (1361:27) 
     function create_if_block_3(ctx) {
     	let div2;
     	let div0;
@@ -1425,25 +1551,25 @@ var app = (function () {
     	let dispose;
 
     	function input_handler_7(...args) {
-    		return /*input_handler_7*/ ctx[63](/*path*/ ctx[11], /*each_value*/ ctx[87], /*path_index*/ ctx[88], ...args);
+    		return /*input_handler_7*/ ctx[62](/*path*/ ctx[6], /*each_value*/ ctx[86], /*path_index*/ ctx[87], ...args);
     	}
 
     	function input_handler_8(...args) {
-    		return /*input_handler_8*/ ctx[64](/*path*/ ctx[11], /*each_value*/ ctx[87], /*path_index*/ ctx[88], ...args);
+    		return /*input_handler_8*/ ctx[63](/*path*/ ctx[6], /*each_value*/ ctx[86], /*path_index*/ ctx[87], ...args);
     	}
 
     	function select_change_handler() {
-    		/*select_change_handler*/ ctx[65].call(select, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*select_change_handler*/ ctx[64].call(select, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	function change_handler() {
-    		return /*change_handler*/ ctx[66](/*path*/ ctx[11]);
+    		return /*change_handler*/ ctx[65](/*path*/ ctx[6]);
     	}
 
     	function select_block_type_2(ctx, dirty) {
-    		if (/*path*/ ctx[11].robotHeading === 'linear') return create_if_block_4;
-    		if (/*path*/ ctx[11].robotHeading === 'tangential') return create_if_block_5;
-    		if (/*path*/ ctx[11].robotHeading === 'constant') return create_if_block_6;
+    		if (/*path*/ ctx[6].robotHeading === 'linear') return create_if_block_4;
+    		if (/*path*/ ctx[6].robotHeading === 'tangential') return create_if_block_5;
+    		if (/*path*/ ctx[6].robotHeading === 'constant') return create_if_block_6;
     	}
 
     	let current_block_type = select_block_type_2(ctx);
@@ -1473,48 +1599,48 @@ var app = (function () {
     			option2.textContent = "Linear";
     			t9 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-1pbflzg");
-    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92]);
+    			attr_dev(label0, "class", "cp-x svelte-lezlw2");
+    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1355, 12, 42006);
-    			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92]);
-    			attr_dev(input0, "class", "standard-input-box svelte-1pbflzg");
+    			add_location(label0, file, 1363, 12, 41813);
+    			attr_dev(input0, "id", input0_id_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91]);
+    			attr_dev(input0, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			input0.value = input0_value_value = /*path*/ ctx[11].controlPoints[/*path*/ ctx[11].controlPoints.length - 1].x;
-    			add_location(input0, file, 1356, 12, 42109);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-1pbflzg");
-    			add_location(div0, file, 1354, 11, 41955);
-    			attr_dev(label1, "class", "cp-y svelte-1pbflzg");
-    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y");
+    			input0.value = input0_value_value = /*path*/ ctx[6].controlPoints[/*path*/ ctx[6].controlPoints.length - 1].x;
+    			add_location(input0, file, 1364, 12, 41916);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-lezlw2");
+    			add_location(div0, file, 1362, 11, 41762);
+    			attr_dev(label1, "class", "cp-y svelte-lezlw2");
+    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1359, 12, 42491);
-    			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y");
-    			attr_dev(input1, "class", "standard-input-box svelte-1pbflzg");
+    			add_location(label1, file, 1367, 12, 42298);
+    			attr_dev(input1, "id", input1_id_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y");
+    			attr_dev(input1, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			input1.value = input1_value_value = /*path*/ ctx[11].controlPoints[/*path*/ ctx[11].controlPoints.length - 1].y;
-    			add_location(input1, file, 1360, 12, 42596);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-1pbflzg");
-    			add_location(div1, file, 1358, 11, 42440);
+    			input1.value = input1_value_value = /*path*/ ctx[6].controlPoints[/*path*/ ctx[6].controlPoints.length - 1].y;
+    			add_location(input1, file, 1368, 12, 42403);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-lezlw2");
+    			add_location(div1, file, 1366, 11, 42247);
     			option0.__value = "constant";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-1pbflzg");
-    			add_location(option0, file, 1364, 12, 43142);
+    			attr_dev(option0, "class", "svelte-lezlw2");
+    			add_location(option0, file, 1372, 12, 42949);
     			option1.__value = "tangential";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-1pbflzg");
-    			add_location(option1, file, 1365, 12, 43197);
+    			attr_dev(option1, "class", "svelte-lezlw2");
+    			add_location(option1, file, 1373, 12, 43004);
     			option2.__value = "linear";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-1pbflzg");
-    			add_location(option2, file, 1366, 12, 43256);
+    			attr_dev(option2, "class", "svelte-lezlw2");
+    			add_location(option2, file, 1374, 12, 43063);
     			attr_dev(select, "id", "robot-heading");
-    			attr_dev(select, "class", "standard-input-box svelte-1pbflzg");
-    			if (/*path*/ ctx[11].robotHeading === void 0) add_render_callback(select_change_handler);
-    			add_location(select, file, 1363, 11, 42997);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div2, file, 1353, 10, 41907);
+    			attr_dev(select, "class", "standard-input-box svelte-lezlw2");
+    			if (/*path*/ ctx[6].robotHeading === void 0) add_render_callback(select_change_handler);
+    			add_location(select, file, 1371, 11, 42804);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div2, file, 1361, 10, 41714);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1534,7 +1660,7 @@ var app = (function () {
     			append_dev(select, option0);
     			append_dev(select, option1);
     			append_dev(select, option2);
-    			select_option(select, /*path*/ ctx[11].robotHeading, true);
+    			select_option(select, /*path*/ ctx[6].robotHeading, true);
     			append_dev(div2, t9);
     			if (if_block) if_block.m(div2, null);
 
@@ -1552,32 +1678,32 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92])) {
+    			if (dirty[0] & /*$paths*/ 16 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91])) {
     				attr_dev(label0, "for", label0_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input0_id_value !== (input0_id_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92])) {
+    			if (dirty[0] & /*$paths*/ 16 && input0_id_value !== (input0_id_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91])) {
     				attr_dev(input0, "id", input0_id_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input0_value_value !== (input0_value_value = /*path*/ ctx[11].controlPoints[/*path*/ ctx[11].controlPoints.length - 1].x) && input0.value !== input0_value_value) {
+    			if (dirty[0] & /*$paths*/ 16 && input0_value_value !== (input0_value_value = /*path*/ ctx[6].controlPoints[/*path*/ ctx[6].controlPoints.length - 1].x) && input0.value !== input0_value_value) {
     				prop_dev(input0, "value", input0_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 16 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y")) {
     				attr_dev(label1, "for", label1_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input1_id_value !== (input1_id_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 16 && input1_id_value !== (input1_id_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y")) {
     				attr_dev(input1, "id", input1_id_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input1_value_value !== (input1_value_value = /*path*/ ctx[11].controlPoints[/*path*/ ctx[11].controlPoints.length - 1].y) && input1.value !== input1_value_value) {
+    			if (dirty[0] & /*$paths*/ 16 && input1_value_value !== (input1_value_value = /*path*/ ctx[6].controlPoints[/*path*/ ctx[6].controlPoints.length - 1].y) && input1.value !== input1_value_value) {
     				prop_dev(input1, "value", input1_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				select_option(select, /*path*/ ctx[11].robotHeading);
+    			if (dirty[0] & /*$paths*/ 16) {
+    				select_option(select, /*path*/ ctx[6].robotHeading);
     			}
 
     			if (current_block_type === (current_block_type = select_block_type_2(ctx)) && if_block) {
@@ -1608,14 +1734,14 @@ var app = (function () {
     		block,
     		id: create_if_block_3.name,
     		type: "if",
-    		source: "(1353:27) ",
+    		source: "(1361:27) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1332:10) {#if i > 0 && i!=path.controlPoints.length-1}
+    // (1340:10) {#if i > 0 && i!=path.controlPoints.length-1}
     function create_if_block_1(ctx) {
     	let div2;
     	let div0;
@@ -1638,14 +1764,14 @@ var app = (function () {
     	let dispose;
 
     	function input_handler_5(...args) {
-    		return /*input_handler_5*/ ctx[60](/*path*/ ctx[11], /*i*/ ctx[92], /*each_value*/ ctx[87], /*path_index*/ ctx[88], ...args);
+    		return /*input_handler_5*/ ctx[59](/*path*/ ctx[6], /*i*/ ctx[91], /*each_value*/ ctx[86], /*path_index*/ ctx[87], ...args);
     	}
 
     	function input_handler_6(...args) {
-    		return /*input_handler_6*/ ctx[61](/*path*/ ctx[11], /*i*/ ctx[92], /*each_value*/ ctx[87], /*path_index*/ ctx[88], ...args);
+    		return /*input_handler_6*/ ctx[60](/*path*/ ctx[6], /*i*/ ctx[91], /*each_value*/ ctx[86], /*path_index*/ ctx[87], ...args);
     	}
 
-    	let if_block = /*i*/ ctx[92] > 0 && create_if_block_2(ctx);
+    	let if_block = /*i*/ ctx[91] > 0 && create_if_block_2(ctx);
 
     	const block = {
     		c: function create() {
@@ -1663,32 +1789,32 @@ var app = (function () {
     			input1 = element("input");
     			t5 = space();
     			if (if_block) if_block.c();
-    			attr_dev(label0, "class", "cp-x svelte-1pbflzg");
-    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92]);
+    			attr_dev(label0, "class", "cp-x svelte-lezlw2");
+    			attr_dev(label0, "for", label0_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91]);
     			set_style(label0, "user-select", "none");
-    			add_location(label0, file, 1334, 13, 40383);
+    			add_location(label0, file, 1342, 13, 40190);
     			attr_dev(input0, "id", "cp-input");
-    			attr_dev(input0, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input0, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			input0.value = input0_value_value = /*path*/ ctx[11].controlPoints[/*i*/ ctx[92]].x;
-    			add_location(input0, file, 1335, 13, 40487);
-    			attr_dev(div0, "class", "control-point-mini-box-x svelte-1pbflzg");
-    			add_location(div0, file, 1333, 12, 40331);
-    			attr_dev(label1, "class", "cp-y svelte-1pbflzg");
-    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y");
+    			input0.value = input0_value_value = /*path*/ ctx[6].controlPoints[/*i*/ ctx[91]].x;
+    			add_location(input0, file, 1343, 13, 40294);
+    			attr_dev(div0, "class", "control-point-mini-box-x svelte-lezlw2");
+    			add_location(div0, file, 1341, 12, 40138);
+    			attr_dev(label1, "class", "cp-y svelte-lezlw2");
+    			attr_dev(label1, "for", label1_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y");
     			set_style(label1, "user-select", "none");
-    			add_location(label1, file, 1338, 13, 40801);
+    			add_location(label1, file, 1346, 13, 40608);
     			attr_dev(input1, "id", "cp-input");
-    			attr_dev(input1, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input1, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			input1.value = input1_value_value = /*path*/ ctx[11].controlPoints[/*i*/ ctx[92]].y;
-    			add_location(input1, file, 1339, 13, 40907);
-    			attr_dev(div1, "class", "control-point-mini-box-y svelte-1pbflzg");
-    			add_location(div1, file, 1337, 12, 40749);
-    			attr_dev(div2, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div2, file, 1332, 11, 40282);
+    			input1.value = input1_value_value = /*path*/ ctx[6].controlPoints[/*i*/ ctx[91]].y;
+    			add_location(input1, file, 1347, 13, 40714);
+    			attr_dev(div1, "class", "control-point-mini-box-y svelte-lezlw2");
+    			add_location(div1, file, 1345, 12, 40556);
+    			attr_dev(div2, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div2, file, 1340, 11, 40089);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div2, anchor);
@@ -1718,23 +1844,23 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92])) {
+    			if (dirty[0] & /*$paths*/ 16 && label0_for_value !== (label0_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91])) {
     				attr_dev(label0, "for", label0_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input0_value_value !== (input0_value_value = /*path*/ ctx[11].controlPoints[/*i*/ ctx[92]].x) && input0.value !== input0_value_value) {
+    			if (dirty[0] & /*$paths*/ 16 && input0_value_value !== (input0_value_value = /*path*/ ctx[6].controlPoints[/*i*/ ctx[91]].x) && input0.value !== input0_value_value) {
     				prop_dev(input0, "value", input0_value_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[11].id + "-" + /*i*/ ctx[92] + "-y")) {
+    			if (dirty[0] & /*$paths*/ 16 && label1_for_value !== (label1_for_value = "control-point-" + /*path*/ ctx[6].id + "-" + /*i*/ ctx[91] + "-y")) {
     				attr_dev(label1, "for", label1_for_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && input1_value_value !== (input1_value_value = /*path*/ ctx[11].controlPoints[/*i*/ ctx[92]].y) && input1.value !== input1_value_value) {
+    			if (dirty[0] & /*$paths*/ 16 && input1_value_value !== (input1_value_value = /*path*/ ctx[6].controlPoints[/*i*/ ctx[91]].y) && input1.value !== input1_value_value) {
     				prop_dev(input1, "value", input1_value_value);
     			}
 
-    			if (/*i*/ ctx[92] > 0) if_block.p(ctx, dirty);
+    			if (/*i*/ ctx[91] > 0) if_block.p(ctx, dirty);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(div2);
@@ -1748,14 +1874,14 @@ var app = (function () {
     		block,
     		id: create_if_block_1.name,
     		type: "if",
-    		source: "(1332:10) {#if i > 0 && i!=path.controlPoints.length-1}",
+    		source: "(1340:10) {#if i > 0 && i!=path.controlPoints.length-1}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1382:54) 
+    // (1390:54) 
     function create_if_block_6(ctx) {
     	let div;
     	let input;
@@ -1763,7 +1889,7 @@ var app = (function () {
     	let dispose;
 
     	function input_input_handler_3() {
-    		/*input_input_handler_3*/ ctx[73].call(input, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*input_input_handler_3*/ ctx[72].call(input, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	const block = {
@@ -1771,22 +1897,22 @@ var app = (function () {
     			div = element("div");
     			input = element("input");
     			attr_dev(input, "id", "constant-angle");
-    			attr_dev(input, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input, "type", "number");
     			attr_dev(input, "step", "0.01");
-    			add_location(input, file, 1383, 13, 44270);
-    			attr_dev(div, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div, file, 1382, 12, 44220);
+    			add_location(input, file, 1391, 13, 44077);
+    			attr_dev(div, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div, file, 1390, 12, 44027);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
     			append_dev(div, input);
-    			set_input_value(input, /*path*/ ctx[11].constantAngleDegrees);
+    			set_input_value(input, /*path*/ ctx[6].constantAngleDegrees);
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input, "input", input_input_handler_3),
-    					listen_dev(input, "input", /*input_handler_12*/ ctx[74], false, false, false, false)
+    					listen_dev(input, "input", /*input_handler_12*/ ctx[73], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1795,8 +1921,8 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024 && to_number(input.value) !== /*path*/ ctx[11].constantAngleDegrees) {
-    				set_input_value(input, /*path*/ ctx[11].constantAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 16 && to_number(input.value) !== /*path*/ ctx[6].constantAngleDegrees) {
+    				set_input_value(input, /*path*/ ctx[6].constantAngleDegrees);
     			}
     		},
     		d: function destroy(detaching) {
@@ -1810,14 +1936,14 @@ var app = (function () {
     		block,
     		id: create_if_block_6.name,
     		type: "if",
-    		source: "(1382:54) ",
+    		source: "(1390:54) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1377:56) 
+    // (1385:56) 
     function create_if_block_5(ctx) {
     	let div;
     	let label;
@@ -1827,7 +1953,7 @@ var app = (function () {
     	let dispose;
 
     	function input_change_handler() {
-    		/*input_change_handler*/ ctx[71].call(input, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*input_change_handler*/ ctx[70].call(input, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	const block = {
@@ -1839,26 +1965,26 @@ var app = (function () {
     			input = element("input");
     			attr_dev(label, "for", "reverse");
     			set_style(label, "user-select", "none");
-    			attr_dev(label, "class", "svelte-1pbflzg");
-    			add_location(label, file, 1378, 13, 43952);
+    			attr_dev(label, "class", "svelte-lezlw2");
+    			add_location(label, file, 1386, 13, 43759);
     			attr_dev(input, "id", "reverse");
     			attr_dev(input, "type", "checkbox");
-    			attr_dev(input, "class", "svelte-1pbflzg");
-    			add_location(input, file, 1379, 13, 44029);
-    			attr_dev(div, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div, file, 1377, 12, 43902);
+    			attr_dev(input, "class", "svelte-lezlw2");
+    			add_location(input, file, 1387, 13, 43836);
+    			attr_dev(div, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div, file, 1385, 12, 43709);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
     			append_dev(div, label);
     			append_dev(div, t1);
     			append_dev(div, input);
-    			input.checked = /*path*/ ctx[11].reverse;
+    			input.checked = /*path*/ ctx[6].reverse;
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input, "change", input_change_handler),
-    					listen_dev(input, "input", /*input_handler_11*/ ctx[72], false, false, false, false)
+    					listen_dev(input, "input", /*input_handler_11*/ ctx[71], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1867,8 +1993,8 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				input.checked = /*path*/ ctx[11].reverse;
+    			if (dirty[0] & /*$paths*/ 16) {
+    				input.checked = /*path*/ ctx[6].reverse;
     			}
     		},
     		d: function destroy(detaching) {
@@ -1882,14 +2008,14 @@ var app = (function () {
     		block,
     		id: create_if_block_5.name,
     		type: "if",
-    		source: "(1377:56) ",
+    		source: "(1385:56) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1370:11) {#if path.robotHeading === 'linear'}
+    // (1378:11) {#if path.robotHeading === 'linear'}
     function create_if_block_4(ctx) {
     	let div0;
     	let input0;
@@ -1900,11 +2026,11 @@ var app = (function () {
     	let dispose;
 
     	function input0_input_handler_1() {
-    		/*input0_input_handler_1*/ ctx[67].call(input0, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*input0_input_handler_1*/ ctx[66].call(input0, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	function input1_input_handler_1() {
-    		/*input1_input_handler_1*/ ctx[69].call(input1, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*input1_input_handler_1*/ ctx[68].call(input1, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	const block = {
@@ -1915,35 +2041,35 @@ var app = (function () {
     			div1 = element("div");
     			input1 = element("input");
     			attr_dev(input0, "id", "start-angle");
-    			attr_dev(input0, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input0, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 1371, 13, 43428);
-    			attr_dev(div0, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div0, file, 1370, 12, 43378);
+    			add_location(input0, file, 1379, 13, 43235);
+    			attr_dev(div0, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div0, file, 1378, 12, 43185);
     			attr_dev(input1, "id", "end-angle");
-    			attr_dev(input1, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input1, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 1374, 13, 43664);
-    			attr_dev(div1, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div1, file, 1373, 12, 43614);
+    			add_location(input1, file, 1382, 13, 43471);
+    			attr_dev(div1, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div1, file, 1381, 12, 43421);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div0, anchor);
     			append_dev(div0, input0);
-    			set_input_value(input0, /*path*/ ctx[11].startAngleDegrees);
+    			set_input_value(input0, /*path*/ ctx[6].startAngleDegrees);
     			insert_dev(target, t, anchor);
     			insert_dev(target, div1, anchor);
     			append_dev(div1, input1);
-    			set_input_value(input1, /*path*/ ctx[11].endAngleDegrees);
+    			set_input_value(input1, /*path*/ ctx[6].endAngleDegrees);
 
     			if (!mounted) {
     				dispose = [
     					listen_dev(input0, "input", input0_input_handler_1),
-    					listen_dev(input0, "input", /*input_handler_9*/ ctx[68], false, false, false, false),
+    					listen_dev(input0, "input", /*input_handler_9*/ ctx[67], false, false, false, false),
     					listen_dev(input1, "input", input1_input_handler_1),
-    					listen_dev(input1, "input", /*input_handler_10*/ ctx[70], false, false, false, false)
+    					listen_dev(input1, "input", /*input_handler_10*/ ctx[69], false, false, false, false)
     				];
 
     				mounted = true;
@@ -1952,12 +2078,12 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024 && to_number(input0.value) !== /*path*/ ctx[11].startAngleDegrees) {
-    				set_input_value(input0, /*path*/ ctx[11].startAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 16 && to_number(input0.value) !== /*path*/ ctx[6].startAngleDegrees) {
+    				set_input_value(input0, /*path*/ ctx[6].startAngleDegrees);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && to_number(input1.value) !== /*path*/ ctx[11].endAngleDegrees) {
-    				set_input_value(input1, /*path*/ ctx[11].endAngleDegrees);
+    			if (dirty[0] & /*$paths*/ 16 && to_number(input1.value) !== /*path*/ ctx[6].endAngleDegrees) {
+    				set_input_value(input1, /*path*/ ctx[6].endAngleDegrees);
     			}
     		},
     		d: function destroy(detaching) {
@@ -1973,14 +2099,14 @@ var app = (function () {
     		block,
     		id: create_if_block_4.name,
     		type: "if",
-    		source: "(1370:11) {#if path.robotHeading === 'linear'}",
+    		source: "(1378:11) {#if path.robotHeading === 'linear'}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1343:11) {#if (i > 0)}
+    // (1351:11) {#if (i > 0)}
     function create_if_block_2(ctx) {
     	let svg;
     	let path_1;
@@ -1988,7 +2114,7 @@ var app = (function () {
     	let dispose;
 
     	function click_handler_4() {
-    		return /*click_handler_4*/ ctx[62](/*path*/ ctx[11], /*i*/ ctx[92]);
+    		return /*click_handler_4*/ ctx[61](/*path*/ ctx[6], /*i*/ ctx[91]);
     	}
 
     	const block = {
@@ -1996,16 +2122,16 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path_1, "class", "svelte-1pbflzg");
-    			add_location(path_1, file, 1347, 285, 41608);
+    			attr_dev(path_1, "class", "svelte-lezlw2");
+    			add_location(path_1, file, 1355, 285, 41415);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
     			set_style(svg, "cursor", "pointer");
-    			attr_dev(svg, "class", "svelte-1pbflzg");
-    			add_location(svg, file, 1347, 11, 41334);
+    			attr_dev(svg, "class", "svelte-lezlw2");
+    			add_location(svg, file, 1355, 11, 41141);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
@@ -2030,29 +2156,29 @@ var app = (function () {
     		block,
     		id: create_if_block_2.name,
     		type: "if",
-    		source: "(1343:11) {#if (i > 0)}",
+    		source: "(1351:11) {#if (i > 0)}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1325:8) {#each path.controlPoints as { x, y }
+    // (1333:8) {#each path.controlPoints as { x, y }
     function create_each_block_1(ctx) {
     	let div;
     	let t;
 
     	function select_block_type(ctx, dirty) {
-    		if (/*i*/ ctx[92] == 0) return create_if_block_7;
-    		if (/*i*/ ctx[92] > 0 && /*i*/ ctx[92] != /*path*/ ctx[11].controlPoints.length - 1) return create_if_block_8;
+    		if (/*i*/ ctx[91] == 0) return create_if_block_7;
+    		if (/*i*/ ctx[91] > 0 && /*i*/ ctx[91] != /*path*/ ctx[6].controlPoints.length - 1) return create_if_block_8;
     	}
 
     	let current_block_type = select_block_type(ctx);
     	let if_block0 = current_block_type && current_block_type(ctx);
 
     	function select_block_type_1(ctx, dirty) {
-    		if (/*i*/ ctx[92] > 0 && /*i*/ ctx[92] != /*path*/ ctx[11].controlPoints.length - 1) return create_if_block_1;
-    		if (/*i*/ ctx[92] == 0) return create_if_block_3;
+    		if (/*i*/ ctx[91] > 0 && /*i*/ ctx[91] != /*path*/ ctx[6].controlPoints.length - 1) return create_if_block_1;
+    		if (/*i*/ ctx[91] == 0) return create_if_block_3;
     	}
 
     	let current_block_type_1 = select_block_type_1(ctx);
@@ -2064,8 +2190,8 @@ var app = (function () {
     			if (if_block0) if_block0.c();
     			t = space();
     			if (if_block1) if_block1.c();
-    			attr_dev(div, "class", "control-point-box svelte-1pbflzg");
-    			add_location(div, file, 1325, 9, 39878);
+    			attr_dev(div, "class", "control-point-box svelte-lezlw2");
+    			add_location(div, file, 1333, 9, 39685);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
@@ -2115,14 +2241,14 @@ var app = (function () {
     		block,
     		id: create_each_block_1.name,
     		type: "each",
-    		source: "(1325:8) {#each path.controlPoints as { x, y }",
+    		source: "(1333:8) {#each path.controlPoints as { x, y }",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1301:4) {#each $paths as path}
+    // (1309:4) {#each $paths as path}
     function create_each_block(ctx) {
     	let div4;
     	let div2;
@@ -2139,7 +2265,7 @@ var app = (function () {
     	let t2;
     	let p;
     	let t3;
-    	let t4_value = /*path*/ ctx[11].id + 1 + "";
+    	let t4_value = /*path*/ ctx[6].id + 1 + "";
     	let t4;
     	let t5;
     	let div1;
@@ -2155,34 +2281,34 @@ var app = (function () {
     	let dispose;
 
     	function click_handler() {
-    		return /*click_handler*/ ctx[53](/*path*/ ctx[11]);
+    		return /*click_handler*/ ctx[52](/*path*/ ctx[6]);
     	}
 
     	function click_handler_1() {
-    		return /*click_handler_1*/ ctx[54](/*path*/ ctx[11]);
+    		return /*click_handler_1*/ ctx[53](/*path*/ ctx[6]);
     	}
 
     	function input_input_handler_2() {
-    		/*input_input_handler_2*/ ctx[55].call(input, /*each_value*/ ctx[87], /*path_index*/ ctx[88]);
+    		/*input_input_handler_2*/ ctx[54].call(input, /*each_value*/ ctx[86], /*path_index*/ ctx[87]);
     	}
 
     	function input_handler_4() {
-    		return /*input_handler_4*/ ctx[56](/*path*/ ctx[11]);
+    		return /*input_handler_4*/ ctx[55](/*path*/ ctx[6]);
     	}
 
     	function click_handler_2() {
-    		return /*click_handler_2*/ ctx[57](/*path*/ ctx[11]);
+    		return /*click_handler_2*/ ctx[56](/*path*/ ctx[6]);
     	}
 
     	function click_handler_3() {
-    		return /*click_handler_3*/ ctx[58](/*path*/ ctx[11]);
+    		return /*click_handler_3*/ ctx[57](/*path*/ ctx[6]);
     	}
 
     	function keydown_handler(...args) {
-    		return /*keydown_handler*/ ctx[59](/*path*/ ctx[11], ...args);
+    		return /*keydown_handler*/ ctx[58](/*path*/ ctx[6], ...args);
     	}
 
-    	let each_value_1 = /*path*/ ctx[11].controlPoints;
+    	let each_value_1 = /*path*/ ctx[6].controlPoints;
     	validate_each_argument(each_value_1);
     	let each_blocks = [];
 
@@ -2221,81 +2347,81 @@ var app = (function () {
     			}
 
     			attr_dev(path0, "d", "M480-240 240-480l56-56 144 144v-368h80v368l144-144 56 56-240 240Z");
-    			attr_dev(path0, "class", "svelte-1pbflzg");
-    			add_location(path0, file, 1307, 534, 37266);
+    			attr_dev(path0, "class", "svelte-lezlw2");
+    			add_location(path0, file, 1315, 534, 37073);
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
     			attr_dev(svg0, "width", "24px");
 
-    			attr_dev(svg0, "fill", svg0_fill_value = !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == /*$paths*/ ctx[10].length - 1)
+    			attr_dev(svg0, "fill", svg0_fill_value = !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == /*$paths*/ ctx[4].length - 1)
     			? "black"
     			: "gray");
 
-    			set_style(svg0, "cursor", !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == /*$paths*/ ctx[10].length - 1)
+    			set_style(svg0, "cursor", !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == /*$paths*/ ctx[4].length - 1)
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg0, "class", "svelte-1pbflzg");
-    			add_location(svg0, file, 1307, 8, 36740);
+    			attr_dev(svg0, "class", "svelte-lezlw2");
+    			add_location(svg0, file, 1315, 8, 36547);
     			attr_dev(path1, "d", "M440-240v-368L296-464l-56-56 240-240 240 240-56 56-144-144v368h-80Z");
-    			attr_dev(path1, "class", "svelte-1pbflzg");
-    			add_location(path1, file, 1310, 482, 37964);
+    			attr_dev(path1, "class", "svelte-lezlw2");
+    			add_location(path1, file, 1318, 482, 37771);
     			attr_dev(svg1, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg1, "height", "24px");
     			attr_dev(svg1, "viewBox", "0 -960 960 960");
     			attr_dev(svg1, "width", "24px");
 
-    			attr_dev(svg1, "fill", svg1_fill_value = !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == 1)
+    			attr_dev(svg1, "fill", svg1_fill_value = !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == 1)
     			? "black"
     			: "gray");
 
-    			set_style(svg1, "cursor", !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == 1)
+    			set_style(svg1, "cursor", !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == 1)
     			? 'pointer'
     			: 'default');
 
-    			attr_dev(svg1, "class", "svelte-1pbflzg");
-    			add_location(svg1, file, 1310, 8, 37490);
+    			attr_dev(svg1, "class", "svelte-lezlw2");
+    			add_location(svg1, file, 1318, 8, 37297);
     			attr_dev(input, "type", "color");
-    			attr_dev(input, "class", "color-circle svelte-1pbflzg");
-    			set_style(input, "background-color", /*path*/ ctx[11].color);
-    			add_location(input, file, 1311, 8, 38058);
-    			attr_dev(p, "class", "path-title svelte-1pbflzg");
+    			attr_dev(input, "class", "color-circle svelte-lezlw2");
+    			set_style(input, "background-color", /*path*/ ctx[6].color);
+    			add_location(input, file, 1319, 8, 37865);
+    			attr_dev(p, "class", "path-title svelte-lezlw2");
     			set_style(p, "user-select", "none");
-    			add_location(p, file, 1312, 8, 38228);
-    			attr_dev(div0, "class", "path-and-color svelte-1pbflzg");
-    			add_location(div0, file, 1303, 7, 36500);
+    			add_location(p, file, 1320, 8, 38035);
+    			attr_dev(div0, "class", "path-and-color svelte-lezlw2");
+    			add_location(div0, file, 1311, 7, 36307);
     			attr_dev(path2, "d", "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z");
-    			attr_dev(path2, "class", "svelte-1pbflzg");
-    			add_location(path2, file, 1318, 276, 38822);
+    			attr_dev(path2, "class", "svelte-lezlw2");
+    			add_location(path2, file, 1326, 276, 38629);
     			attr_dev(svg2, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg2, "height", "24px");
     			attr_dev(svg2, "viewBox", "0 -960 960 960");
     			attr_dev(svg2, "width", "24px");
-    			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[10].length > 1 ? "#FF474D" : "gray");
-    			set_style(svg2, "cursor", /*$paths*/ ctx[10].length > 1 ? 'pointer' : 'default');
-    			attr_dev(svg2, "class", "svelte-1pbflzg");
-    			add_location(svg2, file, 1318, 8, 38554);
+    			attr_dev(svg2, "fill", svg2_fill_value = /*$paths*/ ctx[4].length > 1 ? "#FF474D" : "gray");
+    			set_style(svg2, "cursor", /*$paths*/ ctx[4].length > 1 ? 'pointer' : 'default');
+    			attr_dev(svg2, "class", "svelte-lezlw2");
+    			add_location(svg2, file, 1326, 8, 38361);
     			attr_dev(path3, "d", "M440-280h80v-160h160v-80H520v-160h-80v160H280v80h160v160Zm40 200q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z");
-    			attr_dev(path3, "class", "svelte-1pbflzg");
-    			add_location(path3, file, 1319, 347, 39382);
+    			attr_dev(path3, "class", "svelte-lezlw2");
+    			add_location(path3, file, 1327, 347, 39189);
     			attr_dev(svg3, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg3, "height", "24px");
     			attr_dev(svg3, "viewBox", "0 -960 960 960");
     			attr_dev(svg3, "width", "24px");
     			attr_dev(svg3, "fill", "#90EE90");
     			set_style(svg3, "cursor", "pointer");
-    			attr_dev(svg3, "class", "svelte-1pbflzg");
-    			add_location(svg3, file, 1319, 8, 39043);
-    			attr_dev(div1, "class", "add-and-remove svelte-1pbflzg");
-    			add_location(div1, file, 1316, 7, 38452);
-    			attr_dev(div2, "class", "path-header svelte-1pbflzg");
-    			add_location(div2, file, 1302, 6, 36467);
-    			attr_dev(div3, "class", "path-control-points svelte-1pbflzg");
-    			add_location(div3, file, 1323, 7, 39785);
-    			attr_dev(div4, "class", "path svelte-1pbflzg");
-    			set_style(div4, "border-color", /*path*/ ctx[11].color);
-    			add_location(div4, file, 1301, 5, 36406);
+    			attr_dev(svg3, "class", "svelte-lezlw2");
+    			add_location(svg3, file, 1327, 8, 38850);
+    			attr_dev(div1, "class", "add-and-remove svelte-lezlw2");
+    			add_location(div1, file, 1324, 7, 38259);
+    			attr_dev(div2, "class", "path-header svelte-lezlw2");
+    			add_location(div2, file, 1310, 6, 36274);
+    			attr_dev(div3, "class", "path-control-points svelte-lezlw2");
+    			add_location(div3, file, 1331, 7, 39592);
+    			attr_dev(div4, "class", "path svelte-lezlw2");
+    			set_style(div4, "border-color", /*path*/ ctx[6].color);
+    			add_location(div4, file, 1309, 5, 36213);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div4, anchor);
@@ -2308,7 +2434,7 @@ var app = (function () {
     			append_dev(svg1, path1);
     			append_dev(div0, t1);
     			append_dev(div0, input);
-    			set_input_value(input, /*path*/ ctx[11].color);
+    			set_input_value(input, /*path*/ ctx[6].color);
     			append_dev(div0, t2);
     			append_dev(div0, p);
     			append_dev(p, t3);
@@ -2346,50 +2472,50 @@ var app = (function () {
     		p: function update(new_ctx, dirty) {
     			ctx = new_ctx;
 
-    			if (dirty[0] & /*$paths*/ 1024 && svg0_fill_value !== (svg0_fill_value = !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == /*$paths*/ ctx[10].length - 1)
+    			if (dirty[0] & /*$paths*/ 16 && svg0_fill_value !== (svg0_fill_value = !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == /*$paths*/ ctx[4].length - 1)
     			? "black"
     			: "gray")) {
     				attr_dev(svg0, "fill", svg0_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(svg0, "cursor", !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == /*$paths*/ ctx[10].length - 1)
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(svg0, "cursor", !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == /*$paths*/ ctx[4].length - 1)
     				? 'pointer'
     				: 'default');
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && svg1_fill_value !== (svg1_fill_value = !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == 1)
+    			if (dirty[0] & /*$paths*/ 16 && svg1_fill_value !== (svg1_fill_value = !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == 1)
     			? "black"
     			: "gray")) {
     				attr_dev(svg1, "fill", svg1_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(svg1, "cursor", !(/*path*/ ctx[11].id == 0 || /*path*/ ctx[11].id == 1)
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(svg1, "cursor", !(/*path*/ ctx[6].id == 0 || /*path*/ ctx[6].id == 1)
     				? 'pointer'
     				: 'default');
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(input, "background-color", /*path*/ ctx[11].color);
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(input, "background-color", /*path*/ ctx[6].color);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_input_value(input, /*path*/ ctx[11].color);
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_input_value(input, /*path*/ ctx[6].color);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024 && t4_value !== (t4_value = /*path*/ ctx[11].id + 1 + "")) set_data_dev(t4, t4_value);
+    			if (dirty[0] & /*$paths*/ 16 && t4_value !== (t4_value = /*path*/ ctx[6].id + 1 + "")) set_data_dev(t4, t4_value);
 
-    			if (dirty[0] & /*$paths*/ 1024 && svg2_fill_value !== (svg2_fill_value = /*$paths*/ ctx[10].length > 1 ? "#FF474D" : "gray")) {
+    			if (dirty[0] & /*$paths*/ 16 && svg2_fill_value !== (svg2_fill_value = /*$paths*/ ctx[4].length > 1 ? "#FF474D" : "gray")) {
     				attr_dev(svg2, "fill", svg2_fill_value);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(svg2, "cursor", /*$paths*/ ctx[10].length > 1 ? 'pointer' : 'default');
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(svg2, "cursor", /*$paths*/ ctx[4].length > 1 ? 'pointer' : 'default');
     			}
 
-    			if (dirty[0] & /*$paths, generateBezierCurve, paths*/ 16778244 | dirty[1] & /*updateRobotPosition*/ 2) {
-    				each_value_1 = /*path*/ ctx[11].controlPoints;
+    			if (dirty[0] & /*$paths, generateBezierCurve, updateRobotPosition*/ 1075838992) {
+    				each_value_1 = /*path*/ ctx[6].controlPoints;
     				validate_each_argument(each_value_1);
     				let i;
 
@@ -2412,8 +2538,8 @@ var app = (function () {
     				each_blocks.length = each_value_1.length;
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				set_style(div4, "border-color", /*path*/ ctx[11].color);
+    			if (dirty[0] & /*$paths*/ 16) {
+    				set_style(div4, "border-color", /*path*/ ctx[6].color);
     			}
     		},
     		d: function destroy(detaching) {
@@ -2428,14 +2554,14 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(1301:4) {#each $paths as path}",
+    		source: "(1309:4) {#each $paths as path}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1408:5) {:else}
+    // (1416:5) {:else}
     function create_else_block(ctx) {
     	let svg;
     	let path_1;
@@ -2447,22 +2573,22 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z");
-    			attr_dev(path_1, "class", "svelte-1pbflzg");
-    			add_location(path_1, file, 1408, 134, 45379);
+    			attr_dev(path_1, "class", "svelte-lezlw2");
+    			add_location(path_1, file, 1416, 134, 45186);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#FF474D");
-    			attr_dev(svg, "class", "svelte-1pbflzg");
-    			add_location(svg, file, 1408, 6, 45251);
+    			attr_dev(svg, "class", "svelte-lezlw2");
+    			add_location(svg, file, 1416, 6, 45058);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
     			append_dev(svg, path_1);
 
     			if (!mounted) {
-    				dispose = listen_dev(svg, "click", /*pausePath*/ ctx[33], false, false, false, false);
+    				dispose = listen_dev(svg, "click", /*pausePath*/ ctx[31], false, false, false, false);
     				mounted = true;
     			}
     		},
@@ -2478,14 +2604,14 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(1408:5) {:else}",
+    		source: "(1416:5) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (1405:5) {#if !isPlaying}
+    // (1413:5) {#if !isPlaying}
     function create_if_block(ctx) {
     	let svg;
     	let path_1;
@@ -2497,22 +2623,22 @@ var app = (function () {
     			svg = svg_element("svg");
     			path_1 = svg_element("path");
     			attr_dev(path_1, "d", "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z");
-    			attr_dev(path_1, "class", "svelte-1pbflzg");
-    			add_location(path_1, file, 1406, 134, 45148);
+    			attr_dev(path_1, "class", "svelte-lezlw2");
+    			add_location(path_1, file, 1414, 134, 44955);
     			attr_dev(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg, "height", "24px");
     			attr_dev(svg, "viewBox", "0 -960 960 960");
     			attr_dev(svg, "width", "24px");
     			attr_dev(svg, "fill", "#90EE90");
-    			attr_dev(svg, "class", "svelte-1pbflzg");
-    			add_location(svg, file, 1406, 7, 45021);
+    			attr_dev(svg, "class", "svelte-lezlw2");
+    			add_location(svg, file, 1414, 7, 44828);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, svg, anchor);
     			append_dev(svg, path_1);
 
     			if (!mounted) {
-    				dispose = listen_dev(svg, "click", /*playPath*/ ctx[31], false, false, false, false);
+    				dispose = listen_dev(svg, "click", /*playPath*/ ctx[29], false, false, false, false);
     				mounted = true;
     			}
     		},
@@ -2528,7 +2654,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(1405:5) {#if !isPlaying}",
+    		source: "(1413:5) {#if !isPlaying}",
     		ctx
     	});
 
@@ -2548,119 +2674,121 @@ var app = (function () {
     	let t4;
     	let button1;
     	let t6;
+    	let button2;
+    	let t8;
     	let div29;
     	let div25;
     	let div22;
     	let div21;
     	let div20;
     	let h20;
-    	let t8;
+    	let t10;
     	let div2;
     	let label0;
-    	let t10;
+    	let t12;
     	let select0;
     	let option0;
     	let option1;
-    	let t13;
+    	let t15;
     	let div3;
     	let label1;
-    	let t15;
+    	let t17;
     	let input0;
-    	let t16;
+    	let t18;
     	let div4;
     	let label2;
-    	let t18;
+    	let t20;
     	let input1;
-    	let t19;
-    	let h21;
     	let t21;
+    	let h21;
+    	let t23;
     	let div8;
     	let label3;
-    	let t23;
+    	let t25;
     	let div7;
     	let div5;
     	let label4;
-    	let t25;
-    	let t26;
+    	let t27;
+    	let t28;
     	let div6;
     	let label5;
-    	let t28;
-    	let t29;
-    	let label6;
+    	let t30;
     	let t31;
+    	let label6;
+    	let t33;
     	let div14;
     	let div12;
     	let div9;
     	let label7;
-    	let t33;
+    	let t35;
     	let input2;
-    	let t34;
+    	let t36;
     	let div10;
     	let label8;
-    	let t36;
+    	let t38;
     	let input3;
-    	let t37;
+    	let t39;
     	let div11;
     	let label9;
-    	let t39;
+    	let t41;
     	let input4;
     	let input4_value_value;
-    	let t40;
+    	let t42;
     	let div13;
     	let label10;
-    	let t42;
+    	let t44;
     	let input5;
     	let input5_value_value;
-    	let t43;
-    	let h22;
     	let t45;
+    	let h22;
+    	let t47;
     	let div15;
     	let label11;
-    	let t47;
+    	let t49;
     	let input6;
-    	let t48;
+    	let t50;
     	let div16;
     	let label12;
-    	let t50;
+    	let t52;
     	let input7;
-    	let t51;
+    	let t53;
     	let div17;
     	let label13;
-    	let t53;
+    	let t55;
     	let input8;
-    	let t54;
+    	let t56;
     	let div18;
     	let label14;
-    	let t56;
+    	let t58;
     	let input9;
-    	let t57;
+    	let t59;
     	let div19;
     	let label15;
-    	let t59;
+    	let t61;
     	let select1;
     	let option2;
     	let option3;
-    	let t62;
-    	let div23;
-    	let t63;
     	let t64;
+    	let div23;
+    	let t65;
+    	let t66;
     	let svg1;
     	let if_block3_anchor;
-    	let t65;
+    	let t67;
     	let div24;
-    	let t66;
-    	let button2;
     	let t68;
+    	let button3;
+    	let t70;
     	let div28;
     	let div27;
     	let div26;
-    	let t69;
+    	let t71;
     	let input10;
     	let mounted;
     	let dispose;
-    	let if_block0 = /*$paths*/ ctx[10].length > 0 && create_if_block_14(ctx);
-    	let if_block1 = /*$paths*/ ctx[10].length > 0 && create_if_block_13(ctx);
-    	let each_value_4 = /*$paths*/ ctx[10];
+    	let if_block0 = /*$paths*/ ctx[4].length > 0 && create_if_block_14(ctx);
+    	let if_block1 = /*$paths*/ ctx[4].length > 0 && create_if_block_13(ctx);
+    	let each_value_4 = /*$paths*/ ctx[4];
     	validate_each_argument(each_value_4);
     	let each_blocks_2 = [];
 
@@ -2668,9 +2796,9 @@ var app = (function () {
     		each_blocks_2[i] = create_each_block_4(get_each_context_4(ctx, each_value_4, i));
     	}
 
-    	let if_block2 = /*$paths*/ ctx[10].length > 0 && create_if_block_12(ctx);
-    	let if_block3 = /*$shouldShowHitbox*/ ctx[21] && create_if_block_10(ctx);
-    	let each_value_2 = /*offsetPaths*/ ctx[9];
+    	let if_block2 = /*$paths*/ ctx[4].length > 0 && create_if_block_12(ctx);
+    	let if_block3 = /*$shouldShowHitbox*/ ctx[17] && create_if_block_10(ctx);
+    	let each_value_2 = /*offsetPaths*/ ctx[2];
     	validate_each_argument(each_value_2);
     	let each_blocks_1 = [];
 
@@ -2678,7 +2806,7 @@ var app = (function () {
     		each_blocks_1[i] = create_each_block_2(get_each_context_2(ctx, each_value_2, i));
     	}
 
-    	let each_value = /*$paths*/ ctx[10];
+    	let each_value = /*$paths*/ ctx[4];
     	validate_each_argument(each_value);
     	let each_blocks = [];
 
@@ -2687,7 +2815,7 @@ var app = (function () {
     	}
 
     	function select_block_type_3(ctx, dirty) {
-    		if (!/*isPlaying*/ ctx[7]) return create_if_block;
+    		if (!/*isPlaying*/ ctx[0]) return create_if_block;
     		return create_else_block;
     	}
 
@@ -2706,11 +2834,14 @@ var app = (function () {
     			path_1 = svg_element("path");
     			t2 = space();
     			button0 = element("button");
-    			button0.textContent = "Import Control Points";
+    			button0.textContent = "Reset To Default";
     			t4 = space();
     			button1 = element("button");
-    			button1.textContent = "Export Control Points";
+    			button1.textContent = "Import Control Points";
     			t6 = space();
+    			button2 = element("button");
+    			button2.textContent = "Export Control Points";
+    			t8 = space();
     			div29 = element("div");
     			div25 = element("div");
     			div22 = element("div");
@@ -2718,124 +2849,124 @@ var app = (function () {
     			div20 = element("div");
     			h20 = element("h2");
     			h20.textContent = "Robot Options";
-    			t8 = space();
+    			t10 = space();
     			div2 = element("div");
     			label0 = element("label");
     			label0.textContent = "Units:";
-    			t10 = space();
+    			t12 = space();
     			select0 = element("select");
     			option0 = element("option");
     			option0.textContent = "Inches";
     			option1 = element("option");
     			option1.textContent = "Centimeters";
-    			t13 = space();
+    			t15 = space();
     			div3 = element("div");
     			label1 = element("label");
     			label1.textContent = "Robot Length:";
-    			t15 = space();
+    			t17 = space();
     			input0 = element("input");
-    			t16 = space();
+    			t18 = space();
     			div4 = element("div");
     			label2 = element("label");
     			label2.textContent = "Robot Width:";
-    			t18 = space();
+    			t20 = space();
     			input1 = element("input");
-    			t19 = space();
+    			t21 = space();
     			h21 = element("h2");
     			h21.textContent = "Field Options";
-    			t21 = space();
+    			t23 = space();
     			div8 = element("div");
     			label3 = element("label");
     			label3.textContent = "Starting Position:";
-    			t23 = space();
+    			t25 = space();
     			div7 = element("div");
     			div5 = element("div");
     			label4 = element("label");
     			label4.textContent = "X:";
-    			t25 = space();
+    			t27 = space();
     			if (if_block0) if_block0.c();
-    			t26 = space();
+    			t28 = space();
     			div6 = element("div");
     			label5 = element("label");
     			label5.textContent = "Y:";
-    			t28 = space();
+    			t30 = space();
     			if (if_block1) if_block1.c();
-    			t29 = space();
+    			t31 = space();
     			label6 = element("label");
     			label6.textContent = "Live Position:";
-    			t31 = space();
+    			t33 = space();
     			div14 = element("div");
     			div12 = element("div");
     			div9 = element("div");
     			label7 = element("label");
     			label7.textContent = "X:";
-    			t33 = space();
+    			t35 = space();
     			input2 = element("input");
-    			t34 = space();
+    			t36 = space();
     			div10 = element("div");
     			label8 = element("label");
     			label8.textContent = "Y:";
-    			t36 = space();
+    			t38 = space();
     			input3 = element("input");
-    			t37 = space();
+    			t39 = space();
     			div11 = element("div");
     			label9 = element("label");
     			label9.textContent = "θ:";
-    			t39 = space();
+    			t41 = space();
     			input4 = element("input");
-    			t40 = space();
+    			t42 = space();
     			div13 = element("div");
     			label10 = element("label");
     			label10.textContent = "Current Path:";
-    			t42 = space();
+    			t44 = space();
     			input5 = element("input");
-    			t43 = space();
+    			t45 = space();
     			h22 = element("h2");
     			h22.textContent = "Advanced Options";
-    			t45 = space();
+    			t47 = space();
     			div15 = element("div");
     			label11 = element("label");
     			label11.textContent = "Show Robot Hitbox:";
-    			t47 = space();
+    			t49 = space();
     			input6 = element("input");
-    			t48 = space();
+    			t50 = space();
     			div16 = element("div");
     			label12 = element("label");
     			label12.textContent = "New Auto Boilerplate:";
-    			t50 = space();
+    			t52 = space();
     			input7 = element("input");
-    			t51 = space();
+    			t53 = space();
     			div17 = element("div");
     			label13 = element("label");
     			label13.textContent = "Infinite Path Looping:";
-    			t53 = space();
+    			t55 = space();
     			input8 = element("input");
-    			t54 = space();
+    			t56 = space();
     			div18 = element("div");
     			label14 = element("label");
     			label14.textContent = "Auto-link Paths:";
-    			t56 = space();
+    			t58 = space();
     			input9 = element("input");
-    			t57 = space();
+    			t59 = space();
     			div19 = element("div");
     			label15 = element("label");
     			label15.textContent = "Rotational Units:";
-    			t59 = space();
+    			t61 = space();
     			select1 = element("select");
     			option2 = element("option");
     			option2.textContent = "Degrees";
     			option3 = element("option");
     			option3.textContent = "Radians";
-    			t62 = space();
+    			t64 = space();
     			div23 = element("div");
 
     			for (let i = 0; i < each_blocks_2.length; i += 1) {
     				each_blocks_2[i].c();
     			}
 
-    			t63 = space();
+    			t65 = space();
     			if (if_block2) if_block2.c();
-    			t64 = space();
+    			t66 = space();
     			svg1 = svg_element("svg");
     			if (if_block3) if_block3.c();
     			if_block3_anchor = empty();
@@ -2844,263 +2975,266 @@ var app = (function () {
     				each_blocks_1[i].c();
     			}
 
-    			t65 = space();
+    			t67 = space();
     			div24 = element("div");
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].c();
     			}
 
-    			t66 = space();
-    			button2 = element("button");
-    			button2.textContent = "Add Path";
     			t68 = space();
+    			button3 = element("button");
+    			button3.textContent = "Add Path";
+    			t70 = space();
     			div28 = element("div");
     			div27 = element("div");
     			div26 = element("div");
     			if_block4.c();
-    			t69 = space();
+    			t71 = space();
     			input10 = element("input");
-    			attr_dev(h1, "class", "page-title svelte-1pbflzg");
-    			add_location(h1, file, 1117, 2, 28392);
+    			attr_dev(h1, "class", "page-title svelte-lezlw2");
+    			add_location(h1, file, 1124, 2, 28072);
     			attr_dev(path_1, "d", "M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z");
-    			attr_dev(path_1, "class", "svelte-1pbflzg");
-    			add_location(path_1, file, 1120, 155, 28673);
+    			attr_dev(path_1, "class", "svelte-lezlw2");
+    			add_location(path_1, file, 1127, 155, 28353);
     			attr_dev(svg0, "id", "code-window-btn");
     			attr_dev(svg0, "xmlns", "http://www.w3.org/2000/svg");
     			attr_dev(svg0, "height", "24px");
     			attr_dev(svg0, "viewBox", "0 -960 960 960");
     			attr_dev(svg0, "width", "24px");
     			attr_dev(svg0, "fill", "black");
-    			attr_dev(svg0, "class", "svelte-1pbflzg");
-    			add_location(svg0, file, 1120, 3, 28521);
+    			attr_dev(svg0, "class", "svelte-lezlw2");
+    			add_location(svg0, file, 1127, 3, 28201);
     			set_style(button0, "user-select", "none");
-    			attr_dev(button0, "class", "svelte-1pbflzg");
-    			add_location(button0, file, 1121, 3, 28910);
+    			attr_dev(button0, "class", "svelte-lezlw2");
+    			add_location(button0, file, 1128, 3, 28590);
     			set_style(button1, "user-select", "none");
-    			attr_dev(button1, "class", "svelte-1pbflzg");
-    			add_location(button1, file, 1122, 3, 29009);
-    			attr_dev(div0, "class", "export-import svelte-1pbflzg");
-    			add_location(div0, file, 1118, 2, 28430);
-    			attr_dev(div1, "class", "header svelte-1pbflzg");
-    			add_location(div1, file, 1116, 1, 28369);
-    			attr_dev(h20, "class", "section-title svelte-1pbflzg");
+    			attr_dev(button1, "class", "svelte-lezlw2");
+    			add_location(button1, file, 1129, 3, 28679);
+    			set_style(button2, "user-select", "none");
+    			attr_dev(button2, "class", "svelte-lezlw2");
+    			add_location(button2, file, 1130, 3, 28778);
+    			attr_dev(div0, "class", "export-import svelte-lezlw2");
+    			add_location(div0, file, 1125, 2, 28110);
+    			attr_dev(div1, "class", "header svelte-lezlw2");
+    			add_location(div1, file, 1123, 1, 28049);
+    			attr_dev(h20, "class", "section-title svelte-lezlw2");
     			set_style(h20, "user-select", "none");
-    			add_location(h20, file, 1132, 6, 29266);
+    			add_location(h20, file, 1140, 6, 29035);
     			attr_dev(label0, "for", "robotUnits");
     			set_style(label0, "user-select", "none");
-    			attr_dev(label0, "class", "svelte-1pbflzg");
-    			add_location(label0, file, 1135, 7, 29379);
+    			attr_dev(label0, "class", "svelte-lezlw2");
+    			add_location(label0, file, 1143, 7, 29148);
     			option0.__value = "inches";
     			option0.value = option0.__value;
-    			attr_dev(option0, "class", "svelte-1pbflzg");
-    			add_location(option0, file, 1137, 8, 29535);
+    			attr_dev(option0, "class", "svelte-lezlw2");
+    			add_location(option0, file, 1145, 8, 29305);
     			option1.__value = "cm";
     			option1.value = option1.__value;
-    			attr_dev(option1, "class", "svelte-1pbflzg");
-    			add_location(option1, file, 1138, 8, 29582);
+    			attr_dev(option1, "class", "svelte-lezlw2");
+    			add_location(option1, file, 1146, 8, 29352);
     			attr_dev(select0, "id", "robotUnits");
-    			attr_dev(select0, "class", "standard-input-box svelte-1pbflzg");
-    			if (/*robotUnits*/ ctx[5] === void 0) add_render_callback(() => /*select0_change_handler*/ ctx[37].call(select0));
-    			add_location(select0, file, 1136, 7, 29451);
-    			attr_dev(div2, "class", "robot-options svelte-1pbflzg");
-    			add_location(div2, file, 1134, 6, 29344);
+    			attr_dev(select0, "class", "standard-input-box svelte-lezlw2");
+    			if (/*$robotUnits*/ ctx[18] === void 0) add_render_callback(() => /*select0_change_handler*/ ctx[36].call(select0));
+    			add_location(select0, file, 1144, 7, 29220);
+    			attr_dev(div2, "class", "robot-options svelte-lezlw2");
+    			add_location(div2, file, 1142, 6, 29113);
     			attr_dev(label1, "for", "robot-length");
     			set_style(label1, "user-select", "none");
-    			attr_dev(label1, "class", "svelte-1pbflzg");
-    			add_location(label1, file, 1145, 7, 29708);
+    			attr_dev(label1, "class", "svelte-lezlw2");
+    			add_location(label1, file, 1153, 7, 29478);
     			attr_dev(input0, "id", "robot-length");
-    			attr_dev(input0, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input0, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input0, "type", "number");
     			attr_dev(input0, "step", "1");
-    			add_location(input0, file, 1146, 7, 29789);
-    			attr_dev(div3, "class", "robot-options svelte-1pbflzg");
-    			add_location(div3, file, 1144, 6, 29673);
+    			add_location(input0, file, 1154, 7, 29559);
+    			attr_dev(div3, "class", "robot-options svelte-lezlw2");
+    			add_location(div3, file, 1152, 6, 29443);
     			attr_dev(label2, "for", "robot-width");
     			set_style(label2, "user-select", "none");
-    			attr_dev(label2, "class", "svelte-1pbflzg");
-    			add_location(label2, file, 1150, 7, 30019);
+    			attr_dev(label2, "class", "svelte-lezlw2");
+    			add_location(label2, file, 1158, 7, 29789);
     			attr_dev(input1, "id", "robot-width");
-    			attr_dev(input1, "class", "standard-input-box svelte-1pbflzg");
+    			attr_dev(input1, "class", "standard-input-box svelte-lezlw2");
     			attr_dev(input1, "type", "number");
     			attr_dev(input1, "step", "1");
-    			add_location(input1, file, 1151, 7, 30098);
-    			attr_dev(div4, "class", "robot-options svelte-1pbflzg");
-    			add_location(div4, file, 1149, 6, 29984);
+    			add_location(input1, file, 1159, 7, 29868);
+    			attr_dev(div4, "class", "robot-options svelte-lezlw2");
+    			add_location(div4, file, 1157, 6, 29754);
     			attr_dev(h21, "id", "field-options");
-    			attr_dev(h21, "class", "section-title svelte-1pbflzg");
+    			attr_dev(h21, "class", "section-title svelte-lezlw2");
     			set_style(h21, "user-select", "none");
-    			add_location(h21, file, 1156, 6, 30292);
-    			attr_dev(label3, "class", "adv-options svelte-1pbflzg");
+    			add_location(h21, file, 1164, 6, 30062);
+    			attr_dev(label3, "class", "adv-options svelte-lezlw2");
     			set_style(label3, "user-select", "none");
-    			add_location(label3, file, 1161, 6, 30493);
-    			attr_dev(label4, "class", "cp-x svelte-1pbflzg");
+    			add_location(label3, file, 1169, 6, 30263);
+    			attr_dev(label4, "class", "cp-x svelte-lezlw2");
     			set_style(label4, "user-select", "none");
-    			add_location(label4, file, 1167, 8, 30743);
-    			attr_dev(div5, "class", "control-point-mini-box-x svelte-1pbflzg");
-    			add_location(div5, file, 1165, 7, 30631);
-    			attr_dev(label5, "class", "cp-x svelte-1pbflzg");
+    			add_location(label4, file, 1175, 8, 30513);
+    			attr_dev(div5, "class", "control-point-mini-box-x svelte-lezlw2");
+    			add_location(div5, file, 1173, 7, 30401);
+    			attr_dev(label5, "class", "cp-x svelte-lezlw2");
     			set_style(label5, "user-select", "none");
-    			add_location(label5, file, 1174, 8, 31230);
-    			attr_dev(div6, "class", "control-point-mini-box-y svelte-1pbflzg");
-    			add_location(div6, file, 1172, 7, 31118);
-    			attr_dev(div7, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div7, file, 1164, 6, 30587);
-    			attr_dev(div8, "class", "start-pos-container svelte-1pbflzg");
-    			add_location(div8, file, 1160, 6, 30453);
-    			attr_dev(label6, "class", "adv-options svelte-1pbflzg");
+    			add_location(label5, file, 1182, 8, 31000);
+    			attr_dev(div6, "class", "control-point-mini-box-y svelte-lezlw2");
+    			add_location(div6, file, 1180, 7, 30888);
+    			attr_dev(div7, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div7, file, 1172, 6, 30357);
+    			attr_dev(div8, "class", "start-pos-container svelte-lezlw2");
+    			add_location(div8, file, 1168, 6, 30223);
+    			attr_dev(label6, "class", "adv-options svelte-lezlw2");
     			set_style(label6, "user-select", "none");
-    			add_location(label6, file, 1183, 6, 31695);
-    			attr_dev(label7, "class", "cp-x svelte-1pbflzg");
+    			add_location(label6, file, 1191, 6, 31465);
+    			attr_dev(label7, "class", "cp-x svelte-lezlw2");
     			set_style(label7, "user-select", "none");
-    			add_location(label7, file, 1188, 9, 31978);
-    			attr_dev(input2, "class", "start-pos-box svelte-1pbflzg");
+    			add_location(label7, file, 1196, 9, 31748);
+    			attr_dev(input2, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input2, "type", "number");
     			attr_dev(input2, "step", "0.001");
     			input2.readOnly = true;
-    			add_location(input2, file, 1189, 9, 32044);
-    			attr_dev(div9, "class", "control-point-mini-box-x svelte-1pbflzg");
-    			add_location(div9, file, 1186, 8, 31864);
-    			attr_dev(label8, "class", "cp-y svelte-1pbflzg");
+    			add_location(input2, file, 1197, 9, 31814);
+    			attr_dev(div9, "class", "control-point-mini-box-x svelte-lezlw2");
+    			add_location(div9, file, 1194, 8, 31634);
+    			attr_dev(label8, "class", "cp-y svelte-lezlw2");
     			set_style(label8, "user-select", "none");
-    			add_location(label8, file, 1193, 9, 32269);
-    			attr_dev(input3, "class", "start-pos-box svelte-1pbflzg");
+    			add_location(label8, file, 1201, 9, 32039);
+    			attr_dev(input3, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input3, "type", "number");
     			attr_dev(input3, "step", "0.001");
     			input3.readOnly = true;
-    			add_location(input3, file, 1194, 9, 32335);
-    			attr_dev(div10, "class", "control-point-mini-box-y svelte-1pbflzg");
-    			add_location(div10, file, 1191, 8, 32155);
-    			attr_dev(label9, "class", "cp-heading svelte-1pbflzg");
+    			add_location(input3, file, 1202, 9, 32105);
+    			attr_dev(div10, "class", "control-point-mini-box-y svelte-lezlw2");
+    			add_location(div10, file, 1199, 8, 31925);
+    			attr_dev(label9, "class", "cp-heading svelte-lezlw2");
     			set_style(label9, "user-select", "none");
-    			add_location(label9, file, 1198, 9, 32566);
-    			attr_dev(input4, "class", "start-pos-box svelte-1pbflzg");
+    			add_location(label9, file, 1206, 9, 32336);
+    			attr_dev(input4, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input4, "type", "number");
     			attr_dev(input4, "step", "0.001");
-    			input4.value = input4_value_value = Math.round(/*robotLiveAngle*/ ctx[16]);
+    			input4.value = input4_value_value = Math.round(/*robotLiveAngle*/ ctx[10]);
     			input4.readOnly = true;
-    			add_location(input4, file, 1199, 9, 32638);
-    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-1pbflzg");
-    			add_location(div11, file, 1196, 8, 32446);
-    			attr_dev(div12, "class", "cp-x-y svelte-1pbflzg");
-    			add_location(div12, file, 1185, 7, 31835);
-    			attr_dev(label10, "class", "cp-x svelte-1pbflzg");
+    			add_location(input4, file, 1207, 9, 32408);
+    			attr_dev(div11, "class", "control-point-mini-box-heading svelte-lezlw2");
+    			add_location(div11, file, 1204, 8, 32216);
+    			attr_dev(div12, "class", "cp-x-y svelte-lezlw2");
+    			add_location(div12, file, 1193, 7, 31605);
+    			attr_dev(label10, "class", "cp-x svelte-lezlw2");
     			set_style(label10, "user-select", "none");
     			set_style(label10, "font-weight", "600");
-    			add_location(label10, file, 1204, 8, 32902);
-    			attr_dev(input5, "class", "start-pos-box svelte-1pbflzg");
+    			add_location(label10, file, 1212, 8, 32672);
+    			attr_dev(input5, "class", "start-pos-box svelte-lezlw2");
     			attr_dev(input5, "type", "number");
     			attr_dev(input5, "step", "0.001");
-    			input5.value = input5_value_value = /*currentPathIndex*/ ctx[14] + 1;
+    			input5.value = input5_value_value = /*currentPathIndex*/ ctx[9] + 1;
     			input5.readOnly = true;
-    			add_location(input5, file, 1205, 8, 32994);
-    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-1pbflzg");
-    			add_location(div13, file, 1202, 7, 32777);
+    			add_location(input5, file, 1213, 8, 32764);
+    			attr_dev(div13, "class", "control-point-mini-box-x current-path svelte-lezlw2");
+    			add_location(div13, file, 1210, 7, 32547);
     			attr_dev(div14, "id", "live-pos");
-    			attr_dev(div14, "class", "control-point-mini-box svelte-1pbflzg");
-    			add_location(div14, file, 1184, 6, 31777);
+    			attr_dev(div14, "class", "control-point-mini-box svelte-lezlw2");
+    			add_location(div14, file, 1192, 6, 31547);
     			attr_dev(h22, "id", "advanced-options");
-    			attr_dev(h22, "class", "section-title svelte-1pbflzg");
+    			attr_dev(h22, "class", "section-title svelte-lezlw2");
     			set_style(h22, "user-select", "none");
-    			add_location(h22, file, 1210, 6, 33132);
+    			add_location(h22, file, 1218, 6, 32902);
     			attr_dev(label11, "for", "field-length");
     			set_style(label11, "user-select", "none");
-    			attr_dev(label11, "class", "svelte-1pbflzg");
-    			add_location(label11, file, 1212, 7, 33272);
+    			attr_dev(label11, "class", "svelte-lezlw2");
+    			add_location(label11, file, 1220, 7, 33042);
     			attr_dev(input6, "id", "auto-link-paths");
     			attr_dev(input6, "type", "checkbox");
-    			attr_dev(input6, "class", "svelte-1pbflzg");
-    			add_location(input6, file, 1213, 7, 33359);
-    			attr_dev(div15, "class", "advanced-options svelte-1pbflzg");
-    			add_location(div15, file, 1211, 6, 33234);
+    			attr_dev(input6, "class", "svelte-lezlw2");
+    			add_location(input6, file, 1221, 7, 33129);
+    			attr_dev(div15, "class", "advanced-options svelte-lezlw2");
+    			add_location(div15, file, 1219, 6, 33004);
     			attr_dev(label12, "for", "field-length");
     			set_style(label12, "user-select", "none");
-    			attr_dev(label12, "class", "svelte-1pbflzg");
-    			add_location(label12, file, 1217, 7, 33497);
+    			attr_dev(label12, "class", "svelte-lezlw2");
+    			add_location(label12, file, 1225, 7, 33267);
     			attr_dev(input7, "id", "auto-link-paths");
     			attr_dev(input7, "type", "checkbox");
-    			attr_dev(input7, "class", "svelte-1pbflzg");
-    			add_location(input7, file, 1218, 7, 33587);
-    			attr_dev(div16, "class", "advanced-options svelte-1pbflzg");
-    			add_location(div16, file, 1216, 6, 33459);
+    			attr_dev(input7, "class", "svelte-lezlw2");
+    			add_location(input7, file, 1226, 7, 33357);
+    			attr_dev(div16, "class", "advanced-options svelte-lezlw2");
+    			add_location(div16, file, 1224, 6, 33229);
     			attr_dev(label13, "for", "field-length");
     			set_style(label13, "user-select", "none");
-    			attr_dev(label13, "class", "svelte-1pbflzg");
-    			add_location(label13, file, 1222, 7, 33730);
+    			attr_dev(label13, "class", "svelte-lezlw2");
+    			add_location(label13, file, 1230, 7, 33500);
     			attr_dev(input8, "id", "auto-link-paths");
     			attr_dev(input8, "type", "checkbox");
-    			attr_dev(input8, "class", "svelte-1pbflzg");
-    			add_location(input8, file, 1223, 7, 33821);
-    			attr_dev(div17, "class", "advanced-options svelte-1pbflzg");
-    			add_location(div17, file, 1221, 6, 33692);
+    			attr_dev(input8, "class", "svelte-lezlw2");
+    			add_location(input8, file, 1231, 7, 33591);
+    			attr_dev(div17, "class", "advanced-options svelte-lezlw2");
+    			add_location(div17, file, 1229, 6, 33462);
     			attr_dev(label14, "for", "field-length");
     			set_style(label14, "user-select", "none");
-    			attr_dev(label14, "class", "svelte-1pbflzg");
-    			add_location(label14, file, 1226, 7, 33957);
+    			attr_dev(label14, "class", "svelte-lezlw2");
+    			add_location(label14, file, 1234, 7, 33728);
     			attr_dev(input9, "id", "auto-link-paths");
     			attr_dev(input9, "type", "checkbox");
-    			attr_dev(input9, "class", "svelte-1pbflzg");
-    			add_location(input9, file, 1227, 7, 34041);
-    			attr_dev(div18, "class", "advanced-options svelte-1pbflzg");
-    			add_location(div18, file, 1225, 6, 33919);
+    			attr_dev(input9, "class", "svelte-lezlw2");
+    			add_location(input9, file, 1235, 7, 33812);
+    			attr_dev(div18, "class", "advanced-options svelte-lezlw2");
+    			add_location(div18, file, 1233, 6, 33690);
     			attr_dev(label15, "for", "rotationUnits");
     			set_style(label15, "user-select", "none");
-    			attr_dev(label15, "class", "svelte-1pbflzg");
-    			add_location(label15, file, 1230, 7, 34174);
+    			attr_dev(label15, "class", "svelte-lezlw2");
+    			add_location(label15, file, 1238, 7, 33946);
     			option2.__value = "degrees";
     			option2.value = option2.__value;
-    			attr_dev(option2, "class", "svelte-1pbflzg");
-    			add_location(option2, file, 1232, 8, 34350);
+    			attr_dev(option2, "class", "svelte-lezlw2");
+    			add_location(option2, file, 1240, 8, 34155);
     			option3.__value = "radians";
     			option3.value = option3.__value;
-    			attr_dev(option3, "class", "svelte-1pbflzg");
-    			add_location(option3, file, 1233, 8, 34399);
+    			attr_dev(option3, "class", "svelte-lezlw2");
+    			add_location(option3, file, 1241, 8, 34204);
     			attr_dev(select1, "id", "rotationUnits");
-    			attr_dev(select1, "class", "standard-input-box svelte-1pbflzg");
-    			if (/*rotationUnits*/ ctx[6] === void 0) add_render_callback(() => /*select1_change_handler*/ ctx[52].call(select1));
-    			add_location(select1, file, 1231, 7, 34260);
-    			attr_dev(div19, "class", "advanced-options svelte-1pbflzg");
-    			add_location(div19, file, 1229, 6, 34136);
-    			attr_dev(div20, "class", "svelte-1pbflzg");
-    			add_location(div20, file, 1131, 5, 29254);
-    			attr_dev(div21, "class", "robot-options-menu svelte-1pbflzg");
-    			add_location(div21, file, 1130, 4, 29216);
-    			attr_dev(div22, "class", "settings-column svelte-1pbflzg");
-    			add_location(div22, file, 1129, 3, 29182);
+    			attr_dev(select1, "class", "standard-input-box svelte-lezlw2");
+    			if (/*$rotationUnits*/ ctx[5] === void 0) add_render_callback(() => /*select1_change_handler*/ ctx[51].call(select1));
+    			add_location(select1, file, 1239, 7, 34032);
+    			attr_dev(div19, "class", "advanced-options svelte-lezlw2");
+    			add_location(div19, file, 1237, 6, 33908);
+    			attr_dev(div20, "class", "svelte-lezlw2");
+    			add_location(div20, file, 1139, 5, 29023);
+    			attr_dev(div21, "class", "robot-options-menu svelte-lezlw2");
+    			add_location(div21, file, 1138, 4, 28985);
+    			attr_dev(div22, "class", "settings-column svelte-lezlw2");
+    			add_location(div22, file, 1137, 3, 28951);
     			attr_dev(svg1, "viewBox", "0 0 144 144");
     			attr_dev(svg1, "width", "100%");
     			attr_dev(svg1, "height", "100%");
     			set_style(svg1, "position", "absolute");
     			set_style(svg1, "top", "0");
     			set_style(svg1, "left", "0");
-    			attr_dev(svg1, "class", "svelte-1pbflzg");
-    			add_location(svg1, file, 1264, 4, 35172);
-    			attr_dev(div23, "class", "field svelte-1pbflzg");
-    			add_location(div23, file, 1240, 3, 34507);
-    			set_style(button2, "user-select", "none");
-    			attr_dev(button2, "class", "svelte-1pbflzg");
-    			add_location(button2, file, 1395, 4, 44574);
-    			attr_dev(div24, "class", "paths svelte-1pbflzg");
-    			add_location(div24, file, 1299, 3, 36354);
-    			attr_dev(div25, "class", "container svelte-1pbflzg");
-    			add_location(div25, file, 1128, 2, 29155);
-    			attr_dev(div26, "class", "play-button svelte-1pbflzg");
-    			add_location(div26, file, 1401, 4, 44774);
+    			attr_dev(svg1, "class", "svelte-lezlw2");
+    			add_location(svg1, file, 1272, 4, 34979);
+    			attr_dev(div23, "class", "field svelte-lezlw2");
+    			add_location(div23, file, 1248, 3, 34312);
+    			set_style(button3, "user-select", "none");
+    			attr_dev(button3, "class", "svelte-lezlw2");
+    			add_location(button3, file, 1403, 4, 44381);
+    			attr_dev(div24, "class", "paths svelte-lezlw2");
+    			add_location(div24, file, 1307, 3, 36161);
+    			attr_dev(div25, "class", "container svelte-lezlw2");
+    			add_location(div25, file, 1136, 2, 28924);
+    			attr_dev(div26, "class", "play-button svelte-lezlw2");
+    			add_location(div26, file, 1409, 4, 44581);
     			attr_dev(input10, "type", "range");
     			attr_dev(input10, "id", "scrub");
     			attr_dev(input10, "min", "0");
     			attr_dev(input10, "max", "100");
     			attr_dev(input10, "step", "0.001");
-    			attr_dev(input10, "class", "svelte-1pbflzg");
-    			add_location(input10, file, 1412, 4, 45559);
-    			attr_dev(div27, "class", "scrubbing-bar svelte-1pbflzg");
-    			add_location(div27, file, 1400, 3, 44742);
-    			attr_dev(div28, "class", "footer svelte-1pbflzg");
-    			add_location(div28, file, 1399, 2, 44718);
-    			attr_dev(div29, "class", "main-content svelte-1pbflzg");
-    			add_location(div29, file, 1126, 1, 29124);
-    			attr_dev(div30, "class", "svelte-1pbflzg");
-    			add_location(div30, file, 1115, 0, 28362);
+    			attr_dev(input10, "class", "svelte-lezlw2");
+    			add_location(input10, file, 1420, 4, 45366);
+    			attr_dev(div27, "class", "scrubbing-bar svelte-lezlw2");
+    			add_location(div27, file, 1408, 3, 44549);
+    			attr_dev(div28, "class", "footer svelte-lezlw2");
+    			add_location(div28, file, 1407, 2, 44525);
+    			attr_dev(div29, "class", "main-content svelte-lezlw2");
+    			add_location(div29, file, 1134, 1, 28893);
+    			attr_dev(div30, "class", "svelte-lezlw2");
+    			add_location(div30, file, 1122, 0, 28042);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -3117,110 +3251,112 @@ var app = (function () {
     			append_dev(div0, button0);
     			append_dev(div0, t4);
     			append_dev(div0, button1);
-    			append_dev(div30, t6);
+    			append_dev(div0, t6);
+    			append_dev(div0, button2);
+    			append_dev(div30, t8);
     			append_dev(div30, div29);
     			append_dev(div29, div25);
     			append_dev(div25, div22);
     			append_dev(div22, div21);
     			append_dev(div21, div20);
     			append_dev(div20, h20);
-    			append_dev(div20, t8);
+    			append_dev(div20, t10);
     			append_dev(div20, div2);
     			append_dev(div2, label0);
-    			append_dev(div2, t10);
+    			append_dev(div2, t12);
     			append_dev(div2, select0);
     			append_dev(select0, option0);
     			append_dev(select0, option1);
-    			select_option(select0, /*robotUnits*/ ctx[5], true);
-    			append_dev(div20, t13);
+    			select_option(select0, /*$robotUnits*/ ctx[18], true);
+    			append_dev(div20, t15);
     			append_dev(div20, div3);
     			append_dev(div3, label1);
-    			append_dev(div3, t15);
+    			append_dev(div3, t17);
     			append_dev(div3, input0);
-    			set_input_value(input0, /*displayLength*/ ctx[19]);
-    			append_dev(div20, t16);
+    			set_input_value(input0, /*displayLength*/ ctx[12]);
+    			append_dev(div20, t18);
     			append_dev(div20, div4);
     			append_dev(div4, label2);
-    			append_dev(div4, t18);
+    			append_dev(div4, t20);
     			append_dev(div4, input1);
-    			set_input_value(input1, /*displayWidth*/ ctx[18]);
-    			append_dev(div20, t19);
-    			append_dev(div20, h21);
+    			set_input_value(input1, /*displayWidth*/ ctx[11]);
     			append_dev(div20, t21);
+    			append_dev(div20, h21);
+    			append_dev(div20, t23);
     			append_dev(div20, div8);
     			append_dev(div8, label3);
-    			append_dev(div8, t23);
+    			append_dev(div8, t25);
     			append_dev(div8, div7);
     			append_dev(div7, div5);
     			append_dev(div5, label4);
-    			append_dev(div5, t25);
+    			append_dev(div5, t27);
     			if (if_block0) if_block0.m(div5, null);
-    			append_dev(div7, t26);
+    			append_dev(div7, t28);
     			append_dev(div7, div6);
     			append_dev(div6, label5);
-    			append_dev(div6, t28);
+    			append_dev(div6, t30);
     			if (if_block1) if_block1.m(div6, null);
-    			append_dev(div20, t29);
-    			append_dev(div20, label6);
     			append_dev(div20, t31);
+    			append_dev(div20, label6);
+    			append_dev(div20, t33);
     			append_dev(div20, div14);
     			append_dev(div14, div12);
     			append_dev(div12, div9);
     			append_dev(div9, label7);
-    			append_dev(div9, t33);
+    			append_dev(div9, t35);
     			append_dev(div9, input2);
-    			set_input_value(input2, /*robotX*/ ctx[12]);
-    			append_dev(div12, t34);
+    			set_input_value(input2, /*robotX*/ ctx[7]);
+    			append_dev(div12, t36);
     			append_dev(div12, div10);
     			append_dev(div10, label8);
-    			append_dev(div10, t36);
+    			append_dev(div10, t38);
     			append_dev(div10, input3);
-    			set_input_value(input3, /*robotY*/ ctx[13]);
-    			append_dev(div12, t37);
+    			set_input_value(input3, /*robotY*/ ctx[8]);
+    			append_dev(div12, t39);
     			append_dev(div12, div11);
     			append_dev(div11, label9);
-    			append_dev(div11, t39);
+    			append_dev(div11, t41);
     			append_dev(div11, input4);
-    			append_dev(div14, t40);
+    			append_dev(div14, t42);
     			append_dev(div14, div13);
     			append_dev(div13, label10);
-    			append_dev(div13, t42);
+    			append_dev(div13, t44);
     			append_dev(div13, input5);
-    			append_dev(div20, t43);
-    			append_dev(div20, h22);
     			append_dev(div20, t45);
+    			append_dev(div20, h22);
+    			append_dev(div20, t47);
     			append_dev(div20, div15);
     			append_dev(div15, label11);
-    			append_dev(div15, t47);
+    			append_dev(div15, t49);
     			append_dev(div15, input6);
-    			input6.checked = /*$shouldShowHitbox*/ ctx[21];
-    			append_dev(div20, t48);
+    			input6.checked = /*$shouldShowHitbox*/ ctx[17];
+    			append_dev(div20, t50);
     			append_dev(div20, div16);
     			append_dev(div16, label12);
-    			append_dev(div16, t50);
+    			append_dev(div16, t52);
     			append_dev(div16, input7);
-    			input7.checked = /*$shouldHaveBoilerplate*/ ctx[20];
-    			append_dev(div20, t51);
+    			input7.checked = /*$shouldHaveBoilerplate*/ ctx[13];
+    			append_dev(div20, t53);
     			append_dev(div20, div17);
     			append_dev(div17, label13);
-    			append_dev(div17, t53);
+    			append_dev(div17, t55);
     			append_dev(div17, input8);
-    			input8.checked = /*shouldRepeatPath*/ ctx[15];
-    			append_dev(div20, t54);
+    			input8.checked = /*$shouldRepeatPath*/ ctx[15];
+    			append_dev(div20, t56);
     			append_dev(div20, div18);
     			append_dev(div18, label14);
-    			append_dev(div18, t56);
+    			append_dev(div18, t58);
     			append_dev(div18, input9);
-    			input9.checked = /*autoLinkPaths*/ ctx[17];
-    			append_dev(div20, t57);
+    			input9.checked = /*$autoLinkPaths*/ ctx[16];
+    			append_dev(div20, t59);
     			append_dev(div20, div19);
     			append_dev(div19, label15);
-    			append_dev(div19, t59);
+    			append_dev(div19, t61);
     			append_dev(div19, select1);
     			append_dev(select1, option2);
     			append_dev(select1, option3);
-    			select_option(select1, /*rotationUnits*/ ctx[6], true);
-    			append_dev(div25, t62);
+    			select_option(select1, /*$rotationUnits*/ ctx[5], true);
+    			append_dev(div25, t64);
     			append_dev(div25, div23);
 
     			for (let i = 0; i < each_blocks_2.length; i += 1) {
@@ -3229,9 +3365,9 @@ var app = (function () {
     				}
     			}
 
-    			append_dev(div23, t63);
+    			append_dev(div23, t65);
     			if (if_block2) if_block2.m(div23, null);
-    			append_dev(div23, t64);
+    			append_dev(div23, t66);
     			append_dev(div23, svg1);
     			if (if_block3) if_block3.m(svg1, null);
     			append_dev(svg1, if_block3_anchor);
@@ -3242,7 +3378,7 @@ var app = (function () {
     				}
     			}
 
-    			append_dev(div25, t65);
+    			append_dev(div25, t67);
     			append_dev(div25, div24);
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
@@ -3251,57 +3387,59 @@ var app = (function () {
     				}
     			}
 
-    			append_dev(div24, t66);
-    			append_dev(div24, button2);
-    			append_dev(div29, t68);
+    			append_dev(div24, t68);
+    			append_dev(div24, button3);
+    			append_dev(div29, t70);
     			append_dev(div29, div28);
     			append_dev(div28, div27);
     			append_dev(div27, div26);
     			if_block4.m(div26, null);
-    			append_dev(div27, t69);
+    			append_dev(div27, t71);
     			append_dev(div27, input10);
-    			set_input_value(input10, /*linearScrubValue*/ ctx[8]);
+    			set_input_value(input10, /*linearScrubValue*/ ctx[1]);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(svg0, "click", /*showCodeWindow*/ ctx[35], false, false, false, false),
-    					listen_dev(button0, "click", /*importControlPoints*/ ctx[26], false, false, false, false),
-    					listen_dev(button1, "click", /*exportControlPoints*/ ctx[25], false, false, false, false),
-    					listen_dev(select0, "change", /*select0_change_handler*/ ctx[37]),
-    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[38]),
-    					listen_dev(input0, "input", /*input_handler*/ ctx[39], false, false, false, false),
-    					listen_dev(input1, "input", /*input1_input_handler*/ ctx[40]),
-    					listen_dev(input1, "input", /*input_handler_1*/ ctx[41], false, false, false, false),
-    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[46]),
-    					listen_dev(input3, "input", /*input3_input_handler*/ ctx[47]),
-    					listen_dev(input6, "change", /*input6_change_handler*/ ctx[48]),
-    					listen_dev(input7, "change", /*input7_change_handler*/ ctx[49]),
-    					listen_dev(input8, "change", /*input8_change_handler*/ ctx[50]),
-    					listen_dev(input9, "change", /*input9_change_handler*/ ctx[51]),
-    					listen_dev(select1, "change", /*select1_change_handler*/ ctx[52]),
-    					listen_dev(button2, "click", /*click_handler_5*/ ctx[75], false, false, false, false),
-    					listen_dev(input10, "change", /*input10_change_input_handler*/ ctx[76]),
-    					listen_dev(input10, "input", /*input10_change_input_handler*/ ctx[76]),
-    					listen_dev(input10, "input", /*updateRobotPosition*/ ctx[32], false, false, false, false)
+    					listen_dev(svg0, "click", /*showCodeWindow*/ ctx[33], false, false, false, false),
+    					listen_dev(button0, "click", /*resetToDefault*/ ctx[23], false, false, false, false),
+    					listen_dev(button1, "click", /*importControlPoints*/ ctx[24], false, false, false, false),
+    					listen_dev(button2, "click", /*exportControlPoints*/ ctx[22], false, false, false, false),
+    					listen_dev(select0, "change", /*select0_change_handler*/ ctx[36]),
+    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[37]),
+    					listen_dev(input0, "input", /*input_handler*/ ctx[38], false, false, false, false),
+    					listen_dev(input1, "input", /*input1_input_handler*/ ctx[39]),
+    					listen_dev(input1, "input", /*input_handler_1*/ ctx[40], false, false, false, false),
+    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[45]),
+    					listen_dev(input3, "input", /*input3_input_handler*/ ctx[46]),
+    					listen_dev(input6, "change", /*input6_change_handler*/ ctx[47]),
+    					listen_dev(input7, "change", /*input7_change_handler*/ ctx[48]),
+    					listen_dev(input8, "change", /*input8_change_handler*/ ctx[49]),
+    					listen_dev(input9, "change", /*input9_change_handler*/ ctx[50]),
+    					listen_dev(select1, "change", /*select1_change_handler*/ ctx[51]),
+    					listen_dev(select1, "change", /*updateRobotPosition*/ ctx[30], false, false, false, false),
+    					listen_dev(button3, "click", /*click_handler_5*/ ctx[74], false, false, false, false),
+    					listen_dev(input10, "change", /*input10_change_input_handler*/ ctx[75]),
+    					listen_dev(input10, "input", /*input10_change_input_handler*/ ctx[75]),
+    					listen_dev(input10, "input", /*updateRobotPosition*/ ctx[30], false, false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty[0] & /*robotUnits*/ 32) {
-    				select_option(select0, /*robotUnits*/ ctx[5]);
+    			if (dirty[0] & /*$robotUnits*/ 262144) {
+    				select_option(select0, /*$robotUnits*/ ctx[18]);
     			}
 
-    			if (dirty[0] & /*displayLength*/ 524288 && to_number(input0.value) !== /*displayLength*/ ctx[19]) {
-    				set_input_value(input0, /*displayLength*/ ctx[19]);
+    			if (dirty[0] & /*displayLength*/ 4096 && to_number(input0.value) !== /*displayLength*/ ctx[12]) {
+    				set_input_value(input0, /*displayLength*/ ctx[12]);
     			}
 
-    			if (dirty[0] & /*displayWidth*/ 262144 && to_number(input1.value) !== /*displayWidth*/ ctx[18]) {
-    				set_input_value(input1, /*displayWidth*/ ctx[18]);
+    			if (dirty[0] & /*displayWidth*/ 2048 && to_number(input1.value) !== /*displayWidth*/ ctx[11]) {
+    				set_input_value(input1, /*displayWidth*/ ctx[11]);
     			}
 
-    			if (/*$paths*/ ctx[10].length > 0) {
+    			if (/*$paths*/ ctx[4].length > 0) {
     				if (if_block0) {
     					if_block0.p(ctx, dirty);
     				} else {
@@ -3314,7 +3452,7 @@ var app = (function () {
     				if_block0 = null;
     			}
 
-    			if (/*$paths*/ ctx[10].length > 0) {
+    			if (/*$paths*/ ctx[4].length > 0) {
     				if (if_block1) {
     					if_block1.p(ctx, dirty);
     				} else {
@@ -3327,44 +3465,44 @@ var app = (function () {
     				if_block1 = null;
     			}
 
-    			if (dirty[0] & /*robotX*/ 4096 && to_number(input2.value) !== /*robotX*/ ctx[12]) {
-    				set_input_value(input2, /*robotX*/ ctx[12]);
+    			if (dirty[0] & /*robotX*/ 128 && to_number(input2.value) !== /*robotX*/ ctx[7]) {
+    				set_input_value(input2, /*robotX*/ ctx[7]);
     			}
 
-    			if (dirty[0] & /*robotY*/ 8192 && to_number(input3.value) !== /*robotY*/ ctx[13]) {
-    				set_input_value(input3, /*robotY*/ ctx[13]);
+    			if (dirty[0] & /*robotY*/ 256 && to_number(input3.value) !== /*robotY*/ ctx[8]) {
+    				set_input_value(input3, /*robotY*/ ctx[8]);
     			}
 
-    			if (dirty[0] & /*robotLiveAngle*/ 65536 && input4_value_value !== (input4_value_value = Math.round(/*robotLiveAngle*/ ctx[16])) && input4.value !== input4_value_value) {
+    			if (dirty[0] & /*robotLiveAngle*/ 1024 && input4_value_value !== (input4_value_value = Math.round(/*robotLiveAngle*/ ctx[10])) && input4.value !== input4_value_value) {
     				prop_dev(input4, "value", input4_value_value);
     			}
 
-    			if (dirty[0] & /*currentPathIndex*/ 16384 && input5_value_value !== (input5_value_value = /*currentPathIndex*/ ctx[14] + 1) && input5.value !== input5_value_value) {
+    			if (dirty[0] & /*currentPathIndex*/ 512 && input5_value_value !== (input5_value_value = /*currentPathIndex*/ ctx[9] + 1) && input5.value !== input5_value_value) {
     				prop_dev(input5, "value", input5_value_value);
     			}
 
-    			if (dirty[0] & /*$shouldShowHitbox*/ 2097152) {
-    				input6.checked = /*$shouldShowHitbox*/ ctx[21];
+    			if (dirty[0] & /*$shouldShowHitbox*/ 131072) {
+    				input6.checked = /*$shouldShowHitbox*/ ctx[17];
     			}
 
-    			if (dirty[0] & /*$shouldHaveBoilerplate*/ 1048576) {
-    				input7.checked = /*$shouldHaveBoilerplate*/ ctx[20];
+    			if (dirty[0] & /*$shouldHaveBoilerplate*/ 8192) {
+    				input7.checked = /*$shouldHaveBoilerplate*/ ctx[13];
     			}
 
-    			if (dirty[0] & /*shouldRepeatPath*/ 32768) {
-    				input8.checked = /*shouldRepeatPath*/ ctx[15];
+    			if (dirty[0] & /*$shouldRepeatPath*/ 32768) {
+    				input8.checked = /*$shouldRepeatPath*/ ctx[15];
     			}
 
-    			if (dirty[0] & /*autoLinkPaths*/ 131072) {
-    				input9.checked = /*autoLinkPaths*/ ctx[17];
+    			if (dirty[0] & /*$autoLinkPaths*/ 65536) {
+    				input9.checked = /*$autoLinkPaths*/ ctx[16];
     			}
 
-    			if (dirty[0] & /*rotationUnits*/ 64) {
-    				select_option(select1, /*rotationUnits*/ ctx[6]);
+    			if (dirty[0] & /*$rotationUnits*/ 32) {
+    				select_option(select1, /*$rotationUnits*/ ctx[5]);
     			}
 
-    			if (dirty[0] & /*$paths*/ 1024) {
-    				each_value_4 = /*$paths*/ ctx[10];
+    			if (dirty[0] & /*$paths*/ 16) {
+    				each_value_4 = /*$paths*/ ctx[4];
     				validate_each_argument(each_value_4);
     				let i;
 
@@ -3376,7 +3514,7 @@ var app = (function () {
     					} else {
     						each_blocks_2[i] = create_each_block_4(child_ctx);
     						each_blocks_2[i].c();
-    						each_blocks_2[i].m(div23, t63);
+    						each_blocks_2[i].m(div23, t65);
     					}
     				}
 
@@ -3387,20 +3525,20 @@ var app = (function () {
     				each_blocks_2.length = each_value_4.length;
     			}
 
-    			if (/*$paths*/ ctx[10].length > 0) {
+    			if (/*$paths*/ ctx[4].length > 0) {
     				if (if_block2) {
     					if_block2.p(ctx, dirty);
     				} else {
     					if_block2 = create_if_block_12(ctx);
     					if_block2.c();
-    					if_block2.m(div23, t64);
+    					if_block2.m(div23, t66);
     				}
     			} else if (if_block2) {
     				if_block2.d(1);
     				if_block2 = null;
     			}
 
-    			if (/*$shouldShowHitbox*/ ctx[21]) {
+    			if (/*$shouldShowHitbox*/ ctx[17]) {
     				if (if_block3) {
     					if_block3.p(ctx, dirty);
     				} else {
@@ -3413,8 +3551,8 @@ var app = (function () {
     				if_block3 = null;
     			}
 
-    			if (dirty[0] & /*offsetPaths*/ 512) {
-    				each_value_2 = /*offsetPaths*/ ctx[9];
+    			if (dirty[0] & /*offsetPaths*/ 4) {
+    				each_value_2 = /*offsetPaths*/ ctx[2];
     				validate_each_argument(each_value_2);
     				let i;
 
@@ -3437,8 +3575,8 @@ var app = (function () {
     				each_blocks_1.length = each_value_2.length;
     			}
 
-    			if (dirty[0] & /*$paths, generateBezierCurve, paths, addControlPointToPathWithIndex, deletePath, updatePathColor*/ 1895826436 | dirty[1] & /*updateRobotPosition, checkAutoLinkControlPoints*/ 10) {
-    				each_value = /*$paths*/ ctx[10];
+    			if (dirty[0] & /*$paths, generateBezierCurve, updateRobotPosition, addControlPointToPathWithIndex, deletePath, updatePathColor*/ 1545601040 | dirty[1] & /*checkAutoLinkControlPoints*/ 2) {
+    				each_value = /*$paths*/ ctx[4];
     				validate_each_argument(each_value);
     				let i;
 
@@ -3450,7 +3588,7 @@ var app = (function () {
     					} else {
     						each_blocks[i] = create_each_block(child_ctx);
     						each_blocks[i].c();
-    						each_blocks[i].m(div24, t66);
+    						each_blocks[i].m(div24, t68);
     					}
     				}
 
@@ -3473,8 +3611,8 @@ var app = (function () {
     				}
     			}
 
-    			if (dirty[0] & /*linearScrubValue*/ 256) {
-    				set_input_value(input10, /*linearScrubValue*/ ctx[8]);
+    			if (dirty[0] & /*linearScrubValue*/ 2) {
+    				set_input_value(input10, /*linearScrubValue*/ ctx[1]);
     			}
     		},
     		i: noop,
@@ -3539,41 +3677,47 @@ var app = (function () {
     	let displayLength;
     	let displayWidth;
     	let animTime;
-
-    	let $paths,
-    		$$unsubscribe_paths = noop,
-    		$$subscribe_paths = () => ($$unsubscribe_paths(), $$unsubscribe_paths = subscribe(paths, $$value => $$invalidate(10, $paths = $$value)), paths);
-
-    	let $shouldHaveBoilerplate,
-    		$$unsubscribe_shouldHaveBoilerplate = noop,
-    		$$subscribe_shouldHaveBoilerplate = () => ($$unsubscribe_shouldHaveBoilerplate(), $$unsubscribe_shouldHaveBoilerplate = subscribe(shouldHaveBoilerplate, $$value => $$invalidate(20, $shouldHaveBoilerplate = $$value)), shouldHaveBoilerplate);
-
-    	let $shouldShowHitbox,
-    		$$unsubscribe_shouldShowHitbox = noop,
-    		$$subscribe_shouldShowHitbox = () => ($$unsubscribe_shouldShowHitbox(), $$unsubscribe_shouldShowHitbox = subscribe(shouldShowHitbox, $$value => $$invalidate(21, $shouldShowHitbox = $$value)), shouldShowHitbox);
-
-    	$$self.$$.on_destroy.push(() => $$unsubscribe_paths());
-    	$$self.$$.on_destroy.push(() => $$unsubscribe_shouldHaveBoilerplate());
-    	$$self.$$.on_destroy.push(() => $$unsubscribe_shouldShowHitbox());
+    	let $robotWidth;
+    	let $paths;
+    	let $shouldHaveBoilerplate;
+    	let $rotationUnits;
+    	let $robotLength;
+    	let $shouldRepeatPath;
+    	let $autoLinkPaths;
+    	let $shouldShowHitbox;
+    	let $robotUnits;
+    	let $displayDimensions;
+    	validate_store(robotWidth, 'robotWidth');
+    	component_subscribe($$self, robotWidth, $$value => $$invalidate(3, $robotWidth = $$value));
+    	validate_store(paths, 'paths');
+    	component_subscribe($$self, paths, $$value => $$invalidate(4, $paths = $$value));
+    	validate_store(shouldHaveBoilerplate, 'shouldHaveBoilerplate');
+    	component_subscribe($$self, shouldHaveBoilerplate, $$value => $$invalidate(13, $shouldHaveBoilerplate = $$value));
+    	validate_store(rotationUnits, 'rotationUnits');
+    	component_subscribe($$self, rotationUnits, $$value => $$invalidate(5, $rotationUnits = $$value));
+    	validate_store(robotLength, 'robotLength');
+    	component_subscribe($$self, robotLength, $$value => $$invalidate(14, $robotLength = $$value));
+    	validate_store(shouldRepeatPath, 'shouldRepeatPath');
+    	component_subscribe($$self, shouldRepeatPath, $$value => $$invalidate(15, $shouldRepeatPath = $$value));
+    	validate_store(autoLinkPaths, 'autoLinkPaths');
+    	component_subscribe($$self, autoLinkPaths, $$value => $$invalidate(16, $autoLinkPaths = $$value));
+    	validate_store(shouldShowHitbox, 'shouldShowHitbox');
+    	component_subscribe($$self, shouldShowHitbox, $$value => $$invalidate(17, $shouldShowHitbox = $$value));
+    	validate_store(robotUnits, 'robotUnits');
+    	component_subscribe($$self, robotUnits, $$value => $$invalidate(18, $robotUnits = $$value));
+    	validate_store(displayDimensions, 'displayDimensions');
+    	component_subscribe($$self, displayDimensions, $$value => $$invalidate(35, $displayDimensions = $$value));
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots('App', slots, []);
-    	let robotLength = 18;
-    	let robotWidth = 18;
 
-    	// Unit system
-    	let robotUnits = 'inches';
-
-    	let rotationUnits = 'degrees';
-
-    	// Functions to update robotLength and robotWidth
     	function updateRobotLength(value) {
-    		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    		$$invalidate(3, robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+    		const newValue = parseFloat(value) || 0;
+    		robotLength.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
     	}
 
     	function updateRobotWidth(value) {
-    		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-    		$$invalidate(4, robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+    		const newValue = parseFloat(value) || 0;
+    		robotWidth.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
     	}
 
     	function generateBezierCurve(pathId) {
@@ -3589,16 +3733,17 @@ var app = (function () {
     	}
 
     	function exportControlPoints() {
-    		const data = $paths.map(path => ({
-    			id: path.id,
-    			controlPoints: path.controlPoints,
-    			color: path.color,
-    			robotHeading: path.robotHeading,
-    			startAngleDegrees: path.startAngleDegrees,
-    			endAngleDegrees: path.endAngleDegrees,
-    			constantAngleDegrees: path.constantAngleDegrees,
-    			reverse: path.reverse
-    		}));
+    		const data = {
+    			paths: $paths,
+    			robotLength: $robotLength,
+    			robotWidth: $robotWidth,
+    			robotUnits: $robotUnits,
+    			rotationUnits: $rotationUnits,
+    			shouldShowHitbox: $shouldShowHitbox,
+    			shouldHaveBoilerplate: $shouldHaveBoilerplate,
+    			autoLinkPaths: $autoLinkPaths,
+    			shouldRepeatPath: $shouldRepeatPath
+    		};
 
     		const json = JSON.stringify(data, null, 2);
     		const blob = new Blob([json], { type: 'application/json' });
@@ -3607,6 +3752,21 @@ var app = (function () {
     		link.href = url;
     		link.download = 'paths.json';
     		link.click();
+    	}
+
+    	function resetToDefault() {
+    		paths.set([]);
+    		addPath();
+    		generateBezierCurve($paths.length - 1);
+    		updateRobotPosition();
+    		robotLength.set(18);
+    		robotWidth.set(18);
+    		robotUnits.set('inches');
+    		rotationUnits.set('degrees');
+    		shouldShowHitbox.set(false);
+    		shouldHaveBoilerplate.set(false);
+    		autoLinkPaths.set(true);
+    		shouldRepeatPath.set(true);
     	}
 
     	function importControlPoints() {
@@ -3618,8 +3778,16 @@ var app = (function () {
     			const file = event.target.files[0];
     			const text = await file.text();
     			const data = JSON.parse(text);
-    			paths.set(data.map((path, index) => ({ ...path, id: index })));
-    			data.forEach((path, index) => generateBezierCurve(index));
+    			paths.set(data.paths);
+    			robotLength.set(data.robotLength);
+    			robotWidth.set(data.robotWidth);
+    			robotUnits.set(data.robotUnits);
+    			rotationUnits.set(data.rotationUnits);
+    			shouldShowHitbox.set(data.shouldShowHitbox);
+    			shouldHaveBoilerplate.set(data.shouldHaveBoilerplate);
+    			autoLinkPaths.set(data.autoLinkPaths);
+    			shouldRepeatPath.set(data.shouldRepeatPath);
+    			data.paths.forEach((path, index) => generateBezierCurve(index));
     			updateRobotPosition();
     		};
 
@@ -3677,12 +3845,11 @@ var app = (function () {
     				const x = 72 + Math.cos(angle) * distance;
     				const y = 72 + Math.sin(angle) * distance;
 
-    				// Ensure there are at least 2 points before inserting
     				if (path.controlPoints.length > 1) {
-    					const insertIndex = path.controlPoints.length - 1; // End-1 index
-    					path.controlPoints.splice(insertIndex, 0, { x, y }); // 🔹 Insert at End-1
+    					const insertIndex = path.controlPoints.length - 1;
+    					path.controlPoints.splice(insertIndex, 0, { x, y });
     				} else {
-    					path.controlPoints.push({ x, y }); // Default to normal push if too few points
+    					path.controlPoints.push({ x, y });
     				}
     			}
 
@@ -3743,14 +3910,13 @@ var app = (function () {
     	let motionBlurAmount = 0.02;
     	let currentPathIndex = 0;
     	let pathStartTime = 0;
-    	let shouldRepeatPath = true;
     	let robotLiveAngle = 0;
 
     	function playPath() {
     		if (isPlaying) return;
-    		$$invalidate(7, isPlaying = true);
+    		$$invalidate(0, isPlaying = true);
 
-    		$$invalidate(14, currentPathIndex = isStartingFromBeginning
+    		$$invalidate(9, currentPathIndex = isStartingFromBeginning
     		? 0
     		: Math.floor(scrubValue / 100 * $paths.length));
 
@@ -3765,10 +3931,10 @@ var app = (function () {
     		intervalId = setInterval(
     			() => {
     				elapsedTime = (Date.now() - pathStartTime) / 1000;
-    				$$invalidate(11, path = $paths[currentPathIndex]);
+    				$$invalidate(6, path = $paths[currentPathIndex]);
     				pathAnimTime = animTime / $paths.length;
     				progress = elapsedTime / pathAnimTime;
-    				$$invalidate(8, linearScrubValue = (currentPathIndex + progress) / $paths.length * 100);
+    				$$invalidate(1, linearScrubValue = (currentPathIndex + progress) / $paths.length * 100);
 
     				if (progress < 0.5) {
     					progress = 2 * progress * progress;
@@ -3782,12 +3948,12 @@ var app = (function () {
     				if (elapsedTime >= pathAnimTime) {
     					if (currentPathIndex + 1 >= $paths.length) {
     						if (shouldRepeatPath) {
-    							$$invalidate(14, currentPathIndex = 0);
+    							$$invalidate(9, currentPathIndex = 0);
     						} else {
     							pausePath();
     						}
     					} else {
-    						$$invalidate(14, currentPathIndex++, currentPathIndex);
+    						$$invalidate(9, currentPathIndex++, currentPathIndex);
     					}
 
     					pathStartTime = Date.now();
@@ -3813,8 +3979,8 @@ var app = (function () {
     				const point = path.bezierCurvePoints[pointIndex];
 
     				if (point) {
-    					$$invalidate(12, robotX = point.x);
-    					$$invalidate(13, robotY = point.y);
+    					$$invalidate(7, robotX = point.x);
+    					$$invalidate(8, robotY = point.y);
     					const robotElement = document.getElementById('robot');
 
     					if (robotElement) {
@@ -3829,7 +3995,7 @@ var app = (function () {
 
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(16, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(10, robotLiveAngle = $rotationUnits === 'degrees'
     							? angle * (180 / Math.PI)
     							: angle);
     						} else if (path.robotHeading === 'linear') {
@@ -3838,14 +4004,14 @@ var app = (function () {
     							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(16, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(10, robotLiveAngle = $rotationUnits === 'degrees'
     							? angle * (180 / Math.PI)
     							: angle);
     						} else if (path.robotHeading === 'constant') {
     							const angle = path.constantAngle || 0;
     							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 
-    							$$invalidate(16, robotLiveAngle = rotationUnits === 'degrees'
+    							$$invalidate(10, robotLiveAngle = $rotationUnits === 'degrees'
     							? -angle * (180 / Math.PI)
     							: -angle);
     						}
@@ -3860,20 +4026,22 @@ var app = (function () {
     	}
 
     	function pausePath() {
-    		$$invalidate(7, isPlaying = false);
+    		$$invalidate(0, isPlaying = false);
 
     		if (intervalId) {
     			clearInterval(intervalId);
     			intervalId = null;
     		}
 
-    		$$invalidate(36, wasPaused = true);
+    		$$invalidate(34, wasPaused = true);
     		isStartingFromBeginning = false;
     	}
 
     	document.addEventListener('DOMContentLoaded', () => {
-    		addPath();
-    		generateBezierCurve($paths.length - 1);
+    		if ($paths.length === 0) {
+    			addPath();
+    			generateBezierCurve($paths.length - 1);
+    		}
     	});
 
     	document.addEventListener('mousedown', event => {
@@ -3910,8 +4078,8 @@ var app = (function () {
     				const newMouseY = moveEvent.clientY - rect.top;
     				let newX = newMouseX / rect.width * 144;
     				let newY = 144 - newMouseY / rect.height * 144;
-    				const hitboxOffsetX = robotWidth / 2;
-    				const hitboxOffsetY = robotLength / 2;
+    				const hitboxOffsetX = $robotWidth / 2;
+    				const hitboxOffsetY = $robotLength / 2;
     				newX = Math.max(hitboxOffsetX, Math.min(144 - hitboxOffsetX, newX));
     				newY = Math.max(hitboxOffsetY, Math.min(144 - hitboxOffsetY, newY));
 
@@ -3948,8 +4116,6 @@ var app = (function () {
     		}
     	});
 
-    	let autoLinkPaths = true;
-
     	function checkAutoLinkControlPoints() {
     		if (autoLinkPaths) {
     			paths.update(paths => {
@@ -3980,10 +4146,7 @@ var app = (function () {
     			codeContent += 'import com.pedropathing.pathgen.BezierCurve;\n';
     			codeContent += 'import com.pedropathing.pathgen.BezierLine;\n';
     			codeContent += 'import com.pedropathing.pathgen.Path;\n';
-
-    			// codeContent += 'import com.pedropathing.pathgen.PathChain;\n';
     			codeContent += 'import com.pedropathing.pathgen.Point;\n';
-
     			codeContent += 'import com.pedropathing.util.Constants;\n';
     			codeContent += 'import com.pedropathing.util.Timer;\n';
     			codeContent += 'import com.qualcomm.robotcore.eventloop.opmode.Autonomous;\n';
@@ -4001,7 +4164,7 @@ var app = (function () {
     		codeContent += robotX.toFixed(3) + ', ';
     		codeContent += robotY.toFixed(3) + ', ';
 
-    		codeContent += rotationUnits === 'degrees'
+    		codeContent += $rotationUnits === 'degrees'
     		? `Math.toRadians(${robotLiveAngle.toFixed(3)})`
     		: robotLiveAngle.toFixed(3);
 
@@ -4029,7 +4192,7 @@ var app = (function () {
     			codeContent += `    p${index + 1} = new Path(new ${bezierType}(\n                ${points}\n        )\n    );\n\n`;
 
     			if (path.robotHeading === 'constant') {
-    				const angle = rotationUnits === 'degrees'
+    				const angle = $rotationUnits === 'degrees'
     				? `Math.toRadians(${path.constantAngleDegrees || 0})`
     				: `${path.constantAngleDegrees || 0}`;
 
@@ -4043,11 +4206,11 @@ var app = (function () {
     					codeContent += `    p${index + 1}.setReversed(false);\n\n`;
     				}
     			} else if (path.robotHeading === 'linear') {
-    				const startAngle = rotationUnits === 'degrees'
+    				const startAngle = $rotationUnits === 'degrees'
     				? `Math.toRadians(${path.startAngleDegrees || 0})`
     				: `${path.startAngleDegrees || 0}`;
 
-    				const endAngle = rotationUnits === 'degrees'
+    				const endAngle = $rotationUnits === 'degrees'
     				? `Math.toRadians(${path.endAngleDegrees || 0})`
     				: `${path.endAngleDegrees || 0}`;
 
@@ -4058,18 +4221,7 @@ var app = (function () {
     		codeContent += '}\n\n';
 
     		if ($shouldHaveBoilerplate) {
-    			// 	@Override
-    			// 	public void start() {
-    			// 		opmodeTimer.resetTimer();
-    			// 		setPathState(0);
-    			// 	}
-    			// 	/** We do not use this because everything should automatically disable **/
-    			// 	@Override
-    			// 	public void stop() {
-    			// 	}
-    			// }
     			codeContent += 'public void autonomousPathUpdate() {\n';
-
     			codeContent += '    switch (pathState) {\n';
 
     			$paths.forEach((path, index) => {
@@ -4116,37 +4268,28 @@ var app = (function () {
     		codeWindow.document.close();
     	}
 
-    	let { shouldShowHitbox = writable(false) } = $$props;
-    	validate_store(shouldShowHitbox, 'shouldShowHitbox');
-    	$$subscribe_shouldShowHitbox();
-    	let { shouldHaveBoilerplate = writable(false) } = $$props;
-    	validate_store(shouldHaveBoilerplate, 'shouldHaveBoilerplate');
-    	$$subscribe_shouldHaveBoilerplate();
-    	let { paths = writable([]) } = $$props;
-    	validate_store(paths, 'paths');
-    	$$subscribe_paths();
     	let offsetPaths = [];
-    	const writable_props = ['shouldShowHitbox', 'shouldHaveBoilerplate', 'paths'];
+    	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console_1.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
     	function select0_change_handler() {
-    		robotUnits = select_value(this);
-    		$$invalidate(5, robotUnits);
+    		$robotUnits = select_value(this);
+    		robotUnits.set($robotUnits);
     	}
 
     	function input0_input_handler() {
     		displayLength = to_number(this.value);
-    		(($$invalidate(19, displayLength), $$invalidate(5, robotUnits)), $$invalidate(3, robotLength));
+    		($$invalidate(12, displayLength), $$invalidate(35, $displayDimensions));
     	}
 
     	const input_handler = e => updateRobotLength(parseFloat(e.target.value));
 
     	function input1_input_handler() {
     		displayWidth = to_number(this.value);
-    		(($$invalidate(18, displayWidth), $$invalidate(5, robotUnits)), $$invalidate(4, robotWidth));
+    		($$invalidate(11, displayWidth), $$invalidate(35, $displayDimensions));
     	}
 
     	const input_handler_1 = e => updateRobotWidth(parseFloat(e.target.value));
@@ -4177,12 +4320,12 @@ var app = (function () {
 
     	function input2_input_handler() {
     		robotX = to_number(this.value);
-    		$$invalidate(12, robotX);
+    		$$invalidate(7, robotX);
     	}
 
     	function input3_input_handler() {
     		robotY = to_number(this.value);
-    		$$invalidate(13, robotY);
+    		$$invalidate(8, robotY);
     	}
 
     	function input6_change_handler() {
@@ -4196,18 +4339,18 @@ var app = (function () {
     	}
 
     	function input8_change_handler() {
-    		shouldRepeatPath = this.checked;
-    		$$invalidate(15, shouldRepeatPath);
+    		$shouldRepeatPath = this.checked;
+    		shouldRepeatPath.set($shouldRepeatPath);
     	}
 
     	function input9_change_handler() {
-    		autoLinkPaths = this.checked;
-    		$$invalidate(17, autoLinkPaths);
+    		$autoLinkPaths = this.checked;
+    		autoLinkPaths.set($autoLinkPaths);
     	}
 
     	function select1_change_handler() {
-    		rotationUnits = select_value(this);
-    		$$invalidate(6, rotationUnits);
+    		$rotationUnits = select_value(this);
+    		rotationUnits.set($rotationUnits);
     	}
 
     	const click_handler = path => {
@@ -4321,31 +4464,32 @@ var app = (function () {
 
     	function input10_change_input_handler() {
     		linearScrubValue = to_number(this.value);
-    		$$invalidate(8, linearScrubValue);
+    		$$invalidate(1, linearScrubValue);
     	}
-
-    	$$self.$$set = $$props => {
-    		if ('shouldShowHitbox' in $$props) $$subscribe_shouldShowHitbox($$invalidate(0, shouldShowHitbox = $$props.shouldShowHitbox));
-    		if ('shouldHaveBoilerplate' in $$props) $$subscribe_shouldHaveBoilerplate($$invalidate(1, shouldHaveBoilerplate = $$props.shouldHaveBoilerplate));
-    		if ('paths' in $$props) $$subscribe_paths($$invalidate(2, paths = $$props.paths));
-    	};
 
     	$$self.$capture_state = () => ({
     		onMount,
-    		writable,
-    		Path,
-    		generateHitboxPath,
-    		getPointAt,
+    		paths,
     		robotLength,
     		robotWidth,
     		robotUnits,
     		rotationUnits,
+    		shouldShowHitbox,
+    		shouldHaveBoilerplate,
+    		autoLinkPaths,
+    		shouldRepeatPath,
+    		displayDimensions,
+    		writable,
+    		PathClass: Path,
+    		generateHitboxPath,
+    		getPointAt,
     		updateRobotLength,
     		updateRobotWidth,
     		generateBezierCurve,
     		calculateBezier,
     		deCasteljau,
     		exportControlPoints,
+    		resetToDefault,
     		importControlPoints,
     		addPath,
     		addControlPointToPathWithIndex,
@@ -4367,57 +4511,50 @@ var app = (function () {
     		motionBlurAmount,
     		currentPathIndex,
     		pathStartTime,
-    		shouldRepeatPath,
     		robotLiveAngle,
     		playPath,
     		updateRobotPosition,
     		pausePath,
-    		autoLinkPaths,
     		checkAutoLinkControlPoints,
     		showCodeWindow,
-    		shouldShowHitbox,
-    		shouldHaveBoilerplate,
-    		paths,
     		offsetPaths,
     		animTime,
     		displayWidth,
     		displayLength,
+    		$robotWidth,
     		$paths,
     		$shouldHaveBoilerplate,
-    		$shouldShowHitbox
+    		$rotationUnits,
+    		$robotLength,
+    		$shouldRepeatPath,
+    		$autoLinkPaths,
+    		$shouldShowHitbox,
+    		$robotUnits,
+    		$displayDimensions
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ('robotLength' in $$props) $$invalidate(3, robotLength = $$props.robotLength);
-    		if ('robotWidth' in $$props) $$invalidate(4, robotWidth = $$props.robotWidth);
-    		if ('robotUnits' in $$props) $$invalidate(5, robotUnits = $$props.robotUnits);
-    		if ('rotationUnits' in $$props) $$invalidate(6, rotationUnits = $$props.rotationUnits);
     		if ('scrubValue' in $$props) scrubValue = $$props.scrubValue;
-    		if ('robotX' in $$props) $$invalidate(12, robotX = $$props.robotX);
-    		if ('robotY' in $$props) $$invalidate(13, robotY = $$props.robotY);
-    		if ('isPlaying' in $$props) $$invalidate(7, isPlaying = $$props.isPlaying);
-    		if ('wasPaused' in $$props) $$invalidate(36, wasPaused = $$props.wasPaused);
+    		if ('robotX' in $$props) $$invalidate(7, robotX = $$props.robotX);
+    		if ('robotY' in $$props) $$invalidate(8, robotY = $$props.robotY);
+    		if ('isPlaying' in $$props) $$invalidate(0, isPlaying = $$props.isPlaying);
+    		if ('wasPaused' in $$props) $$invalidate(34, wasPaused = $$props.wasPaused);
     		if ('isStartingFromBeginning' in $$props) isStartingFromBeginning = $$props.isStartingFromBeginning;
     		if ('intervalId' in $$props) intervalId = $$props.intervalId;
-    		if ('animInterval' in $$props) $$invalidate(85, animInterval = $$props.animInterval);
+    		if ('animInterval' in $$props) $$invalidate(84, animInterval = $$props.animInterval);
     		if ('progress' in $$props) progress = $$props.progress;
     		if ('elapsedTime' in $$props) elapsedTime = $$props.elapsedTime;
-    		if ('path' in $$props) $$invalidate(11, path = $$props.path);
+    		if ('path' in $$props) $$invalidate(6, path = $$props.path);
     		if ('pathAnimTime' in $$props) pathAnimTime = $$props.pathAnimTime;
-    		if ('linearScrubValue' in $$props) $$invalidate(8, linearScrubValue = $$props.linearScrubValue);
-    		if ('motionBlurAmount' in $$props) $$invalidate(86, motionBlurAmount = $$props.motionBlurAmount);
-    		if ('currentPathIndex' in $$props) $$invalidate(14, currentPathIndex = $$props.currentPathIndex);
+    		if ('linearScrubValue' in $$props) $$invalidate(1, linearScrubValue = $$props.linearScrubValue);
+    		if ('motionBlurAmount' in $$props) $$invalidate(85, motionBlurAmount = $$props.motionBlurAmount);
+    		if ('currentPathIndex' in $$props) $$invalidate(9, currentPathIndex = $$props.currentPathIndex);
     		if ('pathStartTime' in $$props) pathStartTime = $$props.pathStartTime;
-    		if ('shouldRepeatPath' in $$props) $$invalidate(15, shouldRepeatPath = $$props.shouldRepeatPath);
-    		if ('robotLiveAngle' in $$props) $$invalidate(16, robotLiveAngle = $$props.robotLiveAngle);
-    		if ('autoLinkPaths' in $$props) $$invalidate(17, autoLinkPaths = $$props.autoLinkPaths);
-    		if ('shouldShowHitbox' in $$props) $$subscribe_shouldShowHitbox($$invalidate(0, shouldShowHitbox = $$props.shouldShowHitbox));
-    		if ('shouldHaveBoilerplate' in $$props) $$subscribe_shouldHaveBoilerplate($$invalidate(1, shouldHaveBoilerplate = $$props.shouldHaveBoilerplate));
-    		if ('paths' in $$props) $$subscribe_paths($$invalidate(2, paths = $$props.paths));
-    		if ('offsetPaths' in $$props) $$invalidate(9, offsetPaths = $$props.offsetPaths);
+    		if ('robotLiveAngle' in $$props) $$invalidate(10, robotLiveAngle = $$props.robotLiveAngle);
+    		if ('offsetPaths' in $$props) $$invalidate(2, offsetPaths = $$props.offsetPaths);
     		if ('animTime' in $$props) animTime = $$props.animTime;
-    		if ('displayWidth' in $$props) $$invalidate(18, displayWidth = $$props.displayWidth);
-    		if ('displayLength' in $$props) $$invalidate(19, displayLength = $$props.displayLength);
+    		if ('displayWidth' in $$props) $$invalidate(11, displayWidth = $$props.displayWidth);
+    		if ('displayLength' in $$props) $$invalidate(12, displayLength = $$props.displayLength);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -4425,20 +4562,13 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty[0] & /*robotUnits, robotLength*/ 40) {
-    			// Display dimensions (computed based on robotUnits)
-    			$$invalidate(19, displayLength = parseFloat((robotUnits === 'inches'
-    			? robotLength
-    			: robotLength * 2.54).toFixed(2)));
+    		if ($$self.$$.dirty[1] & /*$displayDimensions*/ 16) {
+    			$$invalidate(12, { displayLength, displayWidth } = $displayDimensions, displayLength, ($$invalidate(11, displayWidth), $$invalidate(35, $displayDimensions)));
     		}
 
-    		if ($$self.$$.dirty[0] & /*robotUnits, robotWidth*/ 48) {
-    			$$invalidate(18, displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2)));
-    		}
-
-    		if ($$self.$$.dirty[0] & /*rotationUnits, $paths*/ 1088) {
+    		if ($$self.$$.dirty[0] & /*$rotationUnits, $paths*/ 48) {
     			{
-    				const angleConversionFactor = rotationUnits === 'degrees' ? Math.PI / 180 : 1;
+    				const angleConversionFactor = $rotationUnits === 'degrees' ? Math.PI / 180 : 1;
 
     				$paths.forEach(path => {
     					if (path.robotHeading === 'linear') {
@@ -4451,9 +4581,9 @@ var app = (function () {
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*$paths, robotWidth*/ 1040) {
+    		if ($$self.$$.dirty[0] & /*$paths, $robotWidth*/ 24) {
     			{
-    				$$invalidate(9, offsetPaths = $paths.map(path => ({
+    				$$invalidate(2, offsetPaths = $paths.map(path => ({
     					left: [],
     					right: [],
     					main: [],
@@ -4463,38 +4593,33 @@ var app = (function () {
 
     				$paths.forEach((path, pathIndex) => {
     					if (path.controlPoints.length >= 2) {
-    						// ✅ Now allows both linear & Bézier paths
     						let mainPath = [];
-
-    						// ✅ Generate the hitbox ONCE
-    						const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, robotWidth);
+    						const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, $robotWidth);
 
     						for (let t = 0; t <= 1; t += 0.01) {
     							const mainPoint = getPointAt(t, path.controlPoints);
     							mainPath.push(mainPoint);
     						}
 
-    						// ✅ Assign paths properly
-    						$$invalidate(9, offsetPaths[pathIndex].main = mainPath, offsetPaths);
-
-    						$$invalidate(9, offsetPaths[pathIndex].left = leftPath, offsetPaths);
-    						$$invalidate(9, offsetPaths[pathIndex].right = rightPath, offsetPaths);
+    						$$invalidate(2, offsetPaths[pathIndex].main = mainPath, offsetPaths);
+    						$$invalidate(2, offsetPaths[pathIndex].left = leftPath, offsetPaths);
+    						$$invalidate(2, offsetPaths[pathIndex].right = rightPath, offsetPaths);
     					}
     				});
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*offsetPaths*/ 512) {
+    		if ($$self.$$.dirty[0] & /*offsetPaths*/ 4) {
     			{
     				console.log("offsetPaths:", JSON.stringify(offsetPaths, null, 2));
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*$paths*/ 1024) {
+    		if ($$self.$$.dirty[0] & /*$paths*/ 16) {
     			animTime = 1.56 * $paths.length;
     		}
 
-    		if ($$self.$$.dirty[0] & /*isPlaying, $paths, linearScrubValue*/ 1408 | $$self.$$.dirty[1] & /*wasPaused*/ 32) {
+    		if ($$self.$$.dirty[0] & /*isPlaying, $paths, linearScrubValue*/ 19 | $$self.$$.dirty[1] & /*wasPaused*/ 8) {
     			{
     				if (!isPlaying && wasPaused) {
     					const totalPaths = $paths.length;
@@ -4506,14 +4631,14 @@ var app = (function () {
     					: -1 + (4 - 2 * pathProgress) * pathProgress;
 
     					scrubValue = (pathIndex + adjustedProgress) / totalPaths * 100;
-    					$$invalidate(14, currentPathIndex = pathIndex);
+    					$$invalidate(9, currentPathIndex = pathIndex);
     					progress = adjustedProgress;
     					updateRobotPosition();
     				}
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*isPlaying*/ 128) {
+    		if ($$self.$$.dirty[0] & /*isPlaying*/ 1) {
     			{
     				const robotElement = document.getElementById('robot');
 
@@ -4535,32 +4660,30 @@ var app = (function () {
     	}
 
     	return [
-    		shouldShowHitbox,
-    		shouldHaveBoilerplate,
-    		paths,
-    		robotLength,
-    		robotWidth,
-    		robotUnits,
-    		rotationUnits,
     		isPlaying,
     		linearScrubValue,
     		offsetPaths,
+    		$robotWidth,
     		$paths,
+    		$rotationUnits,
     		path,
     		robotX,
     		robotY,
     		currentPathIndex,
-    		shouldRepeatPath,
     		robotLiveAngle,
-    		autoLinkPaths,
     		displayWidth,
     		displayLength,
     		$shouldHaveBoilerplate,
+    		$robotLength,
+    		$shouldRepeatPath,
+    		$autoLinkPaths,
     		$shouldShowHitbox,
+    		$robotUnits,
     		updateRobotLength,
     		updateRobotWidth,
     		generateBezierCurve,
     		exportControlPoints,
+    		resetToDefault,
     		importControlPoints,
     		addPath,
     		addControlPointToPathWithIndex,
@@ -4572,6 +4695,7 @@ var app = (function () {
     		checkAutoLinkControlPoints,
     		showCodeWindow,
     		wasPaused,
+    		$displayDimensions,
     		select0_change_handler,
     		input0_input_handler,
     		input_handler,
@@ -4618,21 +4742,7 @@ var app = (function () {
     class App extends SvelteComponentDev {
     	constructor(options) {
     		super(options);
-
-    		init(
-    			this,
-    			options,
-    			instance,
-    			create_fragment,
-    			safe_not_equal,
-    			{
-    				shouldShowHitbox: 0,
-    				shouldHaveBoilerplate: 1,
-    				paths: 2
-    			},
-    			null,
-    			[-1, -1, -1, -1]
-    		);
+    		init(this, options, instance, create_fragment, safe_not_equal, {}, null, [-1, -1, -1, -1]);
 
     		dispatch_dev("SvelteRegisterComponent", {
     			component: this,
@@ -4640,30 +4750,6 @@ var app = (function () {
     			options,
     			id: create_fragment.name
     		});
-    	}
-
-    	get shouldShowHitbox() {
-    		throw new Error("<App>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
-    	}
-
-    	set shouldShowHitbox(value) {
-    		throw new Error("<App>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
-    	}
-
-    	get shouldHaveBoilerplate() {
-    		throw new Error("<App>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
-    	}
-
-    	set shouldHaveBoilerplate(value) {
-    		throw new Error("<App>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
-    	}
-
-    	get paths() {
-    		throw new Error("<App>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
-    	}
-
-    	set paths(value) {
-    		throw new Error("<App>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
     	}
     }
 

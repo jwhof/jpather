@@ -1,34 +1,36 @@
 <script>
 import { onMount } from 'svelte';
+import {
+  paths,
+  robotLength,
+  robotWidth,
+  robotUnits,
+  rotationUnits,
+  shouldShowHitbox,
+  shouldHaveBoilerplate,
+  autoLinkPaths,
+  shouldRepeatPath,
+  displayDimensions
+} from './stores.js';
 import { writable } from 'svelte/store';
-import Path from './utils/Path.js';
+import PathClass from './utils/Path.js';
 import { generateHitboxPath, getPointAt } from './utils/bezier.js';  
-	// Robot dimensions in inches
-	let robotLength = 18;
-	let robotWidth = 18;
   
-	// Unit system
-	let robotUnits = 'inches';
-	let rotationUnits = 'degrees';
-  
-	// Display dimensions (computed based on robotUnits)
-	$: displayLength = parseFloat((robotUnits === 'inches' ? robotLength : robotLength * 2.54).toFixed(2));
-	$: displayWidth = parseFloat((robotUnits === 'inches' ? robotWidth : robotWidth * 2.54).toFixed(2));
-  
-	// Functions to update robotLength and robotWidth
+	$: ({ displayLength, displayWidth } = $displayDimensions);
+	
 	function updateRobotLength(value) {
-		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-		robotLength = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+		const newValue = parseFloat(value) || 0;
+		robotLength.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
 	}
 
 	function updateRobotWidth(value) {
-		const newValue = parseFloat(value) || 0; // Treat empty input as 0
-		robotWidth = parseFloat((robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
+		const newValue = parseFloat(value) || 0;
+		robotWidth.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
 	}
 
 
 	$: {
-		const angleConversionFactor = rotationUnits === 'degrees' ? (Math.PI / 180) : 1;
+		const angleConversionFactor = $rotationUnits === 'degrees' ? (Math.PI / 180) : 1;
 		$paths.forEach(path => {
 			if (path.robotHeading === 'linear') {
 				path.startAngle = (path.startAngleDegrees || 0) * angleConversionFactor;
@@ -77,16 +79,18 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 	}
   
 	function exportControlPoints() {
-		const data = $paths.map(path => ({
-			id: path.id,
-			controlPoints: path.controlPoints,
-			color: path.color,
-			robotHeading: path.robotHeading,
-			startAngleDegrees: path.startAngleDegrees,
-			endAngleDegrees: path.endAngleDegrees,
-			constantAngleDegrees: path.constantAngleDegrees,
-			reverse: path.reverse
-		}));
+		const data = {
+			paths: $paths,
+			robotLength: $robotLength,
+			robotWidth: $robotWidth,
+			robotUnits: $robotUnits,
+			rotationUnits: $rotationUnits,
+			shouldShowHitbox: $shouldShowHitbox,
+			shouldHaveBoilerplate: $shouldHaveBoilerplate,
+			autoLinkPaths: $autoLinkPaths,
+			shouldRepeatPath: $shouldRepeatPath
+		};
+		
 		const json = JSON.stringify(data, null, 2);
 		const blob = new Blob([json], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
@@ -94,6 +98,21 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		link.href = url;
 		link.download = 'paths.json';
 		link.click();
+	}
+	
+	function resetToDefault() {
+		paths.set([]);
+		addPath();
+		generateBezierCurve($paths.length - 1);
+		updateRobotPosition();
+		robotLength.set(18);
+		robotWidth.set(18);
+		robotUnits.set('inches');
+		rotationUnits.set('degrees');
+		shouldShowHitbox.set(false);
+		shouldHaveBoilerplate.set(false);
+		autoLinkPaths.set(true);
+		shouldRepeatPath.set(true);
 	}
 
 	function importControlPoints() {
@@ -104,11 +123,18 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			const file = event.target.files[0];
 			const text = await file.text();
 			const data = JSON.parse(text);
-			paths.set(data.map((path, index) => ({
-				...path,
-				id: index
-			})));
-			data.forEach((path, index) => generateBezierCurve(index));
+			
+			paths.set(data.paths);
+			robotLength.set(data.robotLength);
+			robotWidth.set(data.robotWidth);
+			robotUnits.set(data.robotUnits);
+			rotationUnits.set(data.rotationUnits);
+			shouldShowHitbox.set(data.shouldShowHitbox);
+			shouldHaveBoilerplate.set(data.shouldHaveBoilerplate);
+			autoLinkPaths.set(data.autoLinkPaths);
+			shouldRepeatPath.set(data.shouldRepeatPath);
+			
+			data.paths.forEach((path, index) => generateBezierCurve(index));
 			updateRobotPosition();
 		};
 		input.click();
@@ -116,7 +142,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 
 	function addPath() {
     paths.update(paths => {
-        const newPath = new Path(paths.length);
+        const newPath = new PathClass(paths.length);
         if (paths.length > 0) {
             const lastPath = paths[paths.length - 1];
             if (lastPath.controlPoints.length > 0) {
@@ -156,12 +182,12 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			const x = 72 + Math.cos(angle) * distance;
 			const y = 72 + Math.sin(angle) * distance;
 
-			// Ensure there are at least 2 points before inserting
+		
 			if (path.controlPoints.length > 1) {
-				const insertIndex = path.controlPoints.length - 1;  // End-1 index
-				path.controlPoints.splice(insertIndex, 0, { x, y });  // 🔹 Insert at End-1
+				const insertIndex = path.controlPoints.length - 1;  
+				path.controlPoints.splice(insertIndex, 0, { x, y }); 
 			} else {
-				path.controlPoints.push({ x, y }); // Default to normal push if too few points
+				path.controlPoints.push({ x, y }); 
 			}
 		}
 		return paths;
@@ -216,7 +242,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 	let motionBlurAmount = 0.02; 
 	let currentPathIndex = 0;
 	let pathStartTime = 0;
-	let shouldRepeatPath = true;
 	let robotLiveAngle = 0;
 
 	function playPath() {
@@ -288,17 +313,17 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 								angle += Math.PI;
 							}
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
-							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
+							robotLiveAngle = $rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
 						} else if (path.robotHeading === 'linear') {
 							const startAngle = path.startAngle || 0;
 							const endAngle = path.endAngle || 0;
 							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
-							robotLiveAngle = rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
+							robotLiveAngle = $rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
 						} else if (path.robotHeading === 'constant') {
 							const angle = path.constantAngle || 0;
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
-							robotLiveAngle = rotationUnits === 'degrees' ? -angle * (180 / Math.PI) : -angle;
+							robotLiveAngle = $rotationUnits === 'degrees' ? -angle * (180 / Math.PI) : -angle;
 						}
 					}
 				}
@@ -344,8 +369,10 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 
 
 	document.addEventListener('DOMContentLoaded', () => {
-		addPath();
-		generateBezierCurve($paths.length - 1);
+		if ($paths.length === 0) {
+			addPath();
+			generateBezierCurve($paths.length - 1);
+		}
 	});
 
 	document.addEventListener('mousedown', (event) => {
@@ -383,8 +410,8 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 				let newX = newMouseX / rect.width * 144;
 				let newY = 144 - (newMouseY / rect.height * 144);
 
-				const hitboxOffsetX = robotWidth / 2;
-				const hitboxOffsetY = robotLength / 2;
+				const hitboxOffsetX = $robotWidth / 2;
+				const hitboxOffsetY = $robotLength / 2;
 				newX = Math.max(hitboxOffsetX, Math.min(144 - hitboxOffsetX, newX));
 				newY = Math.max(hitboxOffsetY, Math.min(144 - hitboxOffsetY, newY));
 
@@ -416,8 +443,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			document.addEventListener('mouseup', stopMove);
 		}
 	});
-
-	let autoLinkPaths = true;
 
 	function checkAutoLinkControlPoints() {
 		if (autoLinkPaths) {
@@ -456,7 +481,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			codeContent += 'import com.pedropathing.pathgen.BezierCurve;\n';
 			codeContent += 'import com.pedropathing.pathgen.BezierLine;\n';
 			codeContent += 'import com.pedropathing.pathgen.Path;\n';
-			// codeContent += 'import com.pedropathing.pathgen.PathChain;\n';
 			codeContent += 'import com.pedropathing.pathgen.Point;\n';
 			codeContent += 'import com.pedropathing.util.Constants;\n';
 			codeContent += 'import com.pedropathing.util.Timer;\n';
@@ -476,7 +500,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		codeContent += 'private final Pose startPose = new Pose(';
 		codeContent += robotX.toFixed(3) + ', ';
 		codeContent += robotY.toFixed(3) + ', ';
-		codeContent += rotationUnits === 'degrees' ? `Math.toRadians(${robotLiveAngle.toFixed(3)})` : robotLiveAngle.toFixed(3);
+		codeContent += $rotationUnits === 'degrees' ? `Math.toRadians(${robotLiveAngle.toFixed(3)})` : robotLiveAngle.toFixed(3);
 		codeContent += ');\n\n';
 
 		codeContent += 'private Path ';
@@ -497,7 +521,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			codeContent += `    p${index + 1} = new Path(new ${bezierType}(\n                ${points}\n        )\n    );\n\n`;
 
 			if (path.robotHeading === 'constant') {
-				const angle = rotationUnits === 'degrees' ? `Math.toRadians(${path.constantAngleDegrees || 0})` : `${path.constantAngleDegrees || 0}`;
+				const angle = $rotationUnits === 'degrees' ? `Math.toRadians(${path.constantAngleDegrees || 0})` : `${path.constantAngleDegrees || 0}`;
 				codeContent += `    p${index + 1}.setConstantHeadingInterpolation(${angle});\n\n`;
 			} else if (path.robotHeading === 'tangential') {
 				codeContent += `    p${index + 1}.setTangentHeadingInterpolation();\n`;
@@ -508,8 +532,8 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 				}
 				
 			} else if (path.robotHeading === 'linear') {
-				const startAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.startAngleDegrees || 0})` : `${path.startAngleDegrees || 0}`;
-				const endAngle = rotationUnits === 'degrees' ? `Math.toRadians(${path.endAngleDegrees || 0})` : `${path.endAngleDegrees || 0}`;
+				const startAngle = $rotationUnits === 'degrees' ? `Math.toRadians(${path.startAngleDegrees || 0})` : `${path.startAngleDegrees || 0}`;
+				const endAngle = $rotationUnits === 'degrees' ? `Math.toRadians(${path.endAngleDegrees || 0})` : `${path.endAngleDegrees || 0}`;
 				codeContent += `    p${index + 1}.setLinearHeadingInterpolation(${startAngle}, ${endAngle});\n\n`;
 			}
 		});
@@ -517,18 +541,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		codeContent += '}\n\n';
 
 		if ($shouldHaveBoilerplate) {
-
-	// 	@Override
-	// 	public void start() {
-	// 		opmodeTimer.resetTimer();
-	// 		setPathState(0);
-	// 	}
-
-	// 	/** We do not use this because everything should automatically disable **/
-	// 	@Override
-	// 	public void stop() {
-	// 	}
-	// }
 
 		codeContent += 'public void autonomousPathUpdate() {\n';
 		codeContent += '    switch (pathState) {\n';
@@ -586,10 +598,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		codeWindow.document.close();
 	}
 
-	export let shouldShowHitbox = writable(false);
-	export let shouldHaveBoilerplate = writable(false);
-    export let paths = writable([]);
-
     let offsetPaths = [];
 
 $: {
@@ -602,18 +610,17 @@ $: {
     }));
 
     $paths.forEach((path, pathIndex) => {
-        if (path.controlPoints.length >= 2) { // ✅ Now allows both linear & Bézier paths
+        if (path.controlPoints.length >= 2) { 
             let mainPath = [];
             
-            // ✅ Generate the hitbox ONCE
-            const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, robotWidth);
+            const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, $robotWidth);
 
             for (let t = 0; t <= 1; t += 0.01) {
                 const mainPoint = getPointAt(t, path.controlPoints);
                 mainPath.push(mainPoint);
             }
 
-            // ✅ Assign paths properly
+
             offsetPaths[pathIndex].main = mainPath;
             offsetPaths[pathIndex].left = leftPath;
             offsetPaths[pathIndex].right = rightPath;
@@ -769,7 +776,7 @@ $: {
 		border: 4px solid;
 		display: flex;
 		flex-direction: column;
-		width: calc(100% - 8px); /* Adjust width to prevent overflow */
+		width: calc(100% - 8px);
 	}
 
 	.path-header {
@@ -1119,6 +1126,7 @@ $: {
 		<div class="export-import">
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
 			<svg id="code-window-btn" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="black" on:click={showCodeWindow}><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H160v400Zm140-40-56-56 103-104-104-104 57-56 160 160-160 160Zm180 0v-80h240v80H480Z"/></svg>
+			<button on:click={resetToDefault} style="user-select:none;">Reset To Default</button>
 			<button on:click={importControlPoints} style="user-select:none;">Import Control Points</button>
 			<button on:click={exportControlPoints} style="user-select:none;">Export Control Points</button>
 		</div>
@@ -1134,7 +1142,7 @@ $: {
 
 						<div class="robot-options">
 							<label for="robotUnits" style="user-select:none;">Units:</label>
-							<select id="robotUnits" class="standard-input-box" bind:value={robotUnits}>
+							<select id="robotUnits" class="standard-input-box" bind:value={$robotUnits}>
 								<option value="inches">Inches</option>
 								<option value="cm">Centimeters</option>
 							</select>
@@ -1221,15 +1229,15 @@ $: {
 
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Infinite Path Looping: </label>
-							<input id="auto-link-paths" type="checkbox" bind:checked={shouldRepeatPath} />
+							<input id="auto-link-paths" type="checkbox" bind:checked={$shouldRepeatPath} />
 						</div>
 						<div class="advanced-options">
 							<label for="field-length" style="user-select:none;">Auto-link Paths:</label>
-							<input id="auto-link-paths" type="checkbox" bind:checked={autoLinkPaths} />
+							<input id="auto-link-paths" type="checkbox" bind:checked={$autoLinkPaths} />
 						</div>
 						<div class="advanced-options">
 							<label for="rotationUnits" style="user-select:none;">Rotational Units:</label>
-							<select id="rotationUnits" class="standard-input-box" bind:value={rotationUnits}>
+							<select id="rotationUnits" class="standard-input-box" bind:value={$rotationUnits} on:change={updateRobotPosition}>
 								<option value="degrees">Degrees</option>
 								<option value="radians">Radians</option>
 							</select>
@@ -1251,8 +1259,8 @@ $: {
 				{#if $paths.length > 0}
 					<img src="./assets/robot.png" alt="Robot" id="robot"
 						style="
-							width: {robotWidth / 144 * 100}%;
-							height: {robotLength / 144 * 100}%;
+							width: {$robotWidth / 144 * 100}%;
+							height: {$robotLength / 144 * 100}%;
 							left: {(robotX / 144) * 100}%;
 							bottom: {(robotY / 144) * 100}%;
 							user-select: none;
