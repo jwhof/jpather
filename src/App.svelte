@@ -1,31 +1,50 @@
 <script>
-import { onMount } from 'svelte';
-import {
-  paths,
-  robotLength,
-  robotWidth,
-  robotUnits,
-  rotationUnits,
-  shouldShowHitbox,
-  shouldHaveBoilerplate,
-  autoLinkPaths,
-  shouldRepeatPath,
-  displayDimensions
-} from './stores.js';
-import { writable } from 'svelte/store';
-import PathClass from './utils/Path.js';
-import { generateHitboxPath, getPointAt } from './utils/bezier.js';  
-  
-	$: ({ displayLength, displayWidth } = $displayDimensions);
+	import { onMount } from 'svelte';
+	import {
+	paths,
+	robotLength,
+	robotWidth,
+	robotUnits,
+	rotationUnits,
+	shouldShowHitbox,
+	shouldHaveBoilerplate,
+	autoLinkPaths,
+	shouldRepeatPath,
+	displayDimensions
+	} from './stores.js';
+	import PathClass from './utils/Path.js';
+	import { generateHitboxPath, getPointAt } from './utils/bezier.js';  
+
+	let scrubValue = 0;
+	let robotX = 12;
+	let robotY = 96;
+
+	let isPlaying = false;
+	let wasPaused = true;
+	let isStartingFromBeginning = true;
+	$: animTime = 1.56 * $paths.length;
+	let intervalId = null;
+	let animInterval = 1;
+	let progress = 0;
+	let elapsedTime = 0;
+	let path = null;
+	let pathAnimTime = 0;
+	let linearScrubValue = 0;
+	let motionBlurAmount = 0.02; 
+	let currentPathIndex = 0;
+	let pathStartTime = 0;
+	let robotLiveAngle = 0;
 	
+	$: ({ displayLength, displayWidth } = $displayDimensions);
+
 	function updateRobotLength(value) {
 		const newValue = parseFloat(value) || 0;
-		robotLength.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+		$robotLength = parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
 	}
 
 	function updateRobotWidth(value) {
 		const newValue = parseFloat(value) || 0;
-		robotWidth.set(parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2)));
+		$robotWidth = parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
 	}
 
 
@@ -41,13 +60,6 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		});
 	}
 
-	$: {
-    console.log("offsetPaths:", JSON.stringify(offsetPaths, null, 2));
-}
-
-
-
-  
 	function generateBezierCurve(pathId) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
@@ -57,7 +69,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			return paths;
 		});
 	}
-  
+
 	function calculateBezier(points, steps) {
 		let curve = [];
 		for (let t = 0; t <= 1; t += 1 / steps) {
@@ -66,7 +78,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		curve.push(points[points.length - 1]);
 		return curve;
 	}
-  
+
 	function deCasteljau(points, t) {
 		if (points.length === 1) return points[0];
 		let newPoints = [];
@@ -77,7 +89,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		}
 		return deCasteljau(newPoints, t);
 	}
-  
+
 	function exportControlPoints() {
 		const data = {
 			paths: $paths,
@@ -99,7 +111,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		link.download = 'paths.json';
 		link.click();
 	}
-	
+
 	function resetToDefault() {
 		paths.set([]);
 		addPath();
@@ -134,32 +146,32 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			autoLinkPaths.set(data.autoLinkPaths);
 			shouldRepeatPath.set(data.shouldRepeatPath);
 			
-			data.paths.forEach((path, index) => generateBezierCurve(index));
+			data.paths.forEach((_, index) => generateBezierCurve(index));
 			updateRobotPosition();
 		};
 		input.click();
 	}
 
 	function addPath() {
-    paths.update(paths => {
-        const newPath = new PathClass(paths.length);
-        if (paths.length > 0) {
-            const lastPath = paths[paths.length - 1];
-            if (lastPath.controlPoints.length > 0) {
-                const lastControlPoint = lastPath.controlPoints[lastPath.controlPoints.length - 1];
-                const angle = Math.random() * 2 * Math.PI;
-                const distance = 50;
-                const x = 72 + Math.cos(angle) * distance;
-                const y = 72 + Math.sin(angle) * distance;
-                newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y });
-                newPath.controlPoints.push({ x, y });
-            }
-        } else {
-            newPath.controlPoints.push({ x: 12, y: 96 });
-            newPath.controlPoints.push({ x: 36, y: 96 });
-        }
-        newPath.bezierCurvePoints = newPath.calculateBezier();
-        return [...paths, newPath];
+	paths.update(paths => {
+		const newPath = new PathClass(paths.length);
+		if (paths.length > 0) {
+			const lastPath = paths[paths.length - 1];
+			if (lastPath.controlPoints.length > 0) {
+				const lastControlPoint = lastPath.controlPoints[lastPath.controlPoints.length - 1];
+				const angle = Math.random() * 2 * Math.PI;
+				const distance = 50;
+				const x = 72 + Math.cos(angle) * distance;
+				const y = 72 + Math.sin(angle) * distance;
+				newPath.controlPoints.push({ x: lastControlPoint.x, y: lastControlPoint.y });
+				newPath.controlPoints.push({ x, y });
+			}
+		} else {
+			newPath.controlPoints.push({ x: 12, y: 96 });
+			newPath.controlPoints.push({ x: 36, y: 96 });
+		}
+		newPath.bezierCurvePoints = newPath.calculateBezier();
+		return [...paths, newPath];
 		});
 	}
 
@@ -174,25 +186,25 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 
 
 	function addControlPointToPathWithIndex(pathId, index) {
-	paths.update(paths => {
-		const path = paths.find(p => p.id === pathId);
-		if (path) {
-			const angle = Math.random() * 2 * Math.PI;
-			const distance = 50;
-			const x = 72 + Math.cos(angle) * distance;
-			const y = 72 + Math.sin(angle) * distance;
+		paths.update(paths => {
+			const path = paths.find(p => p.id === pathId);
+			if (path) {
+				const angle = Math.random() * 2 * Math.PI;
+				const distance = 50;
+				const x = 72 + Math.cos(angle) * distance;
+				const y = 72 + Math.sin(angle) * distance;
 
-		
-			if (path.controlPoints.length > 1) {
-				const insertIndex = path.controlPoints.length - 1;  
-				path.controlPoints.splice(insertIndex, 0, { x, y }); 
-			} else {
-				path.controlPoints.push({ x, y }); 
+			
+				if (path.controlPoints.length > 1) {
+					const insertIndex = path.controlPoints.length - 1;  
+					path.controlPoints.splice(insertIndex, 0, { x, y }); 
+				} else {
+					path.controlPoints.push({ x, y }); 
+				}
 			}
-		}
-		return paths;
-	});
-}
+			return paths;
+		});
+	}
 
 
 	function updatePathColor(pathId, color) {
@@ -212,7 +224,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 			updatedPaths.forEach((path, index) => {
 				path.id = index;
 			});
-			if (autoLinkPaths && pathId > 0 && pathId < paths.length - 1) {
+			if ($autoLinkPaths && pathId > 0 && pathId < paths.length - 1) {
 				const previousPath = updatedPaths[pathId - 1];
 				const nextPath = updatedPaths[pathId];
 				if (previousPath && nextPath) {
@@ -224,30 +236,10 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		});
 	}
 
-	let scrubValue = 0;
-	let robotX = 12;
-	let robotY = 96;
-
-	let isPlaying = false;
-	let wasPaused = true;
-	let isStartingFromBeginning = true;
-	$: animTime = 1.56 * $paths.length;
-	let intervalId = null;
-	let animInterval = 1;
-	let progress = 0;
-	let elapsedTime = 0;
-	let path = null;
-	let pathAnimTime = 0;
-	let linearScrubValue = 0;
-	let motionBlurAmount = 0.02; 
-	let currentPathIndex = 0;
-	let pathStartTime = 0;
-	let robotLiveAngle = 0;
-
 	function playPath() {
 		if (isPlaying) return;
 		isPlaying = true;
-	
+
 		currentPathIndex = isStartingFromBeginning ? 0 : Math.floor(scrubValue / 100 * $paths.length);
 		pathStartTime = Date.now() - (isStartingFromBeginning ? 0 : (scrubValue % (100 / $paths.length)) / 100 * animTime * 1000);
 
@@ -274,7 +266,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 
 			if (elapsedTime >= pathAnimTime) {
 				if (currentPathIndex + 1 >= $paths.length) {
-					if (shouldRepeatPath) {
+					if ($shouldRepeatPath) {
 						currentPathIndex = 0;
 					} else {
 						pausePath();
@@ -395,7 +387,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 					if (selectedPathId === null && selectedPointIndex === null) {
 						selectedPathId = path.id;
 						selectedPointIndex = index;
-					} else if (autoLinkPaths && selectedPathId2 === null && selectedPointIndex2 === null) {
+					} else if ($autoLinkPaths && selectedPathId2 === null && selectedPointIndex2 === null) {
 						selectedPathId2 = path.id;
 						selectedPointIndex2 = index;
 					}
@@ -421,7 +413,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 						path.controlPoints[selectedPointIndex] = { x: newX, y: newY };
 						path.bezierCurvePoints = calculateBezier(path.controlPoints, 100);
 					}
-					if (autoLinkPaths && selectedPathId2 !== null && selectedPointIndex2 !== null) {
+					if ($autoLinkPaths && selectedPathId2 !== null && selectedPointIndex2 !== null) {
 						const path2 = paths.find(p => p.id === selectedPathId2);
 						if (path2) {
 							path2.controlPoints[selectedPointIndex2] = { x: newX, y: newY };
@@ -445,7 +437,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 	});
 
 	function checkAutoLinkControlPoints() {
-		if (autoLinkPaths) {
+		if ($autoLinkPaths) {
 			paths.update(paths => {
 				for (let i = 0; i < paths.length - 1; i++) {
 					const currentPath = paths[i];
@@ -467,7 +459,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		generateBezierCurve(1);
 	}
 
-	
+
 	function showCodeWindow() {
 		const codeWindow = window.open('', 'CodeWindow', 'width=600,height=400');
 
@@ -475,7 +467,7 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 
 		if ($shouldHaveBoilerplate) {
 
-			codeContent += 'package pedroPathing.examples;\n\n';
+			codeContent += 'package your.package.here;\n\n';
 			codeContent += 'import com.pedropathing.follower.Follower;\n';
 			codeContent += 'import com.pedropathing.localization.Pose;\n';
 			codeContent += 'import com.pedropathing.pathgen.BezierCurve;\n';
@@ -545,11 +537,13 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		codeContent += 'public void autonomousPathUpdate() {\n';
 		codeContent += '    switch (pathState) {\n';
 
-		$paths.forEach((path, index) => {
-			codeContent += `        case ${index*10}:\n`;
-			codeContent += `            follower.followPath(p${index + 1});\n`;
-			codeContent += `            setPathState(${(index + 1)*10});\n`;
-			codeContent += `            break;\n\n`;
+		$paths.forEach((_, index) => {
+			codeContent += `        case ${index * 10}:\n`;
+			codeContent += `            if (!follower.isBusy()) {\n`;
+			codeContent += `                follower.followPath(p${index + 1});\n`;
+			codeContent += `                setPathState(${(index + 1) * 10});\n`;
+			codeContent += `            }\n`;
+			codeContent += `            break;\n`;
 		});
 
 		codeContent += '    }\n';
@@ -598,35 +592,35 @@ import { generateHitboxPath, getPointAt } from './utils/bezier.js';
 		codeWindow.document.close();
 	}
 
-    let offsetPaths = [];
+	let offsetPaths = [];
 
-$: {
-    offsetPaths = $paths.map(path => ({
-        left: [],
-        right: [],
-        main: [],
-        color: path.color,
-        controlPoints: path.controlPoints,
-    }));
+	$: {
+		offsetPaths = $paths.map(path => ({
+			left: [],
+			right: [],
+			main: [],
+			color: path.color,
+			controlPoints: path.controlPoints,
+		}));
 
-    $paths.forEach((path, pathIndex) => {
-        if (path.controlPoints.length >= 2) { 
-            let mainPath = [];
-            
-            const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, $robotWidth);
+		$paths.forEach((path, pathIndex) => {
+			if (path.controlPoints.length >= 2) { 
+				let mainPath = [];
+				
+				const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, $robotWidth);
 
-            for (let t = 0; t <= 1; t += 0.01) {
-                const mainPoint = getPointAt(t, path.controlPoints);
-                mainPath.push(mainPoint);
-            }
+				for (let t = 0; t <= 1; t += 0.01) {
+					const mainPoint = getPointAt(t, path.controlPoints);
+					mainPath.push(mainPoint);
+				}
 
 
-            offsetPaths[pathIndex].main = mainPath;
-            offsetPaths[pathIndex].left = leftPath;
-            offsetPaths[pathIndex].right = rightPath;
-        }
-    });
-}
+				offsetPaths[pathIndex].main = mainPath;
+				offsetPaths[pathIndex].left = leftPath;
+				offsetPaths[pathIndex].right = rightPath;
+			}
+		});
+	}
 
 </script>
   
@@ -649,8 +643,6 @@ $: {
 		margin-left: 0.5rem;
 	
 	}
-
-
 
 	.container {
 		display: flex;
@@ -694,15 +686,6 @@ $: {
 		height: 3%;
 		cursor: grab;
 	}
-
-	.curve {
-		stroke-width: 0.7;
-		fill: none;
-		position: absolute;
-		z-index: 3;
-	}
-
-	
 
 	.robot-options-menu {
 		display: flex;
@@ -1013,11 +996,6 @@ $: {
 		z-index: 0;
 	}
 
-	polyline {
-		position: absolute;
-		z-index: 1;
-	}
-
 	#robotUnits {
 		font-size: 0.75rem;
 		width: auto;
@@ -1152,13 +1130,27 @@ $: {
 
 						<div class="robot-options">
 							<label for="robot-length" style="user-select:none;">Robot Length:</label>
-							<input id="robot-length" class="standard-input-box" type="number" step="1" bind:value={displayLength} on:input={(e) => updateRobotLength(parseFloat(e.target.value))} />
-						</div>
+							<input
+							  id="robot-length"
+							  class="standard-input-box"
+							  type="number"
+							  step="1"
+							  value={displayLength}
+							  on:input={(e) => updateRobotLength(e.target.value)}
+							/>
+						  </div>
 						
-						<div class="robot-options">
+						  <div class="robot-options">
 							<label for="robot-width" style="user-select:none;">Robot Width:</label>
-							<input id="robot-width" class="standard-input-box" type="number" step="1" bind:value={displayWidth} on:input={(e) => updateRobotWidth(parseFloat(e.target.value))} />
-						</div>
+							<input
+							  id="robot-width"
+							  class="standard-input-box"
+							  type="number"
+							  step="1"
+							  value={displayWidth}
+							  on:input={(e) => updateRobotWidth(e.target.value)}
+							/>
+						  </div>
 						
 
 

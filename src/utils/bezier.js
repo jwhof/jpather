@@ -66,7 +66,7 @@ export function getOffsetPointAt(t, controlPoints, width) {
 
 export function generateHitboxPath(controlPoints, width) {
     if (controlPoints.length < 2) {
-        console.warn(`⚠️ Skipping hitbox: Not enough control points (${controlPoints.length} found)`);
+        console.warn(`WARN skipping hitbox: not enough control points (${controlPoints.length} found)`);
         return { leftPath: [], rightPath: [] };
     }
 
@@ -75,7 +75,7 @@ export function generateHitboxPath(controlPoints, width) {
 
     // Case 1: Linear Path (2 Points)
     if (controlPoints.length === 2) {
-        console.log("⚠️ Generating LINEAR hitbox for 2-point path.");
+        console.log("generating LINEAR hitbox for 2pt path");
         for (let t = 0; t <= 1; t += 0.01) {
             const x = (1 - t) * controlPoints[0].x + t * controlPoints[1].x;
             const y = (1 - t) * controlPoints[0].y + t * controlPoints[1].y;
@@ -87,7 +87,7 @@ export function generateHitboxPath(controlPoints, width) {
     }
     // Case 2: Bézier Curve (3+ Points)
     else {
-        console.log("✅ Generating Bézier hitbox.");
+        console.log("generating Bézier hitbox");
         for (let t = 0; t <= 1; t += 0.01) {
             const offsetPoints = getOffsetPointAt(t, controlPoints, width);
             leftPath.push(offsetPoints.left);
@@ -95,6 +95,6 @@ export function generateHitboxPath(controlPoints, width) {
         }
     }
 
-    console.log("✅ Generated hitbox:", { leftPath, rightPath });
+    console.log("generated hitbox:", { leftPath, rightPath });
     return { leftPath, rightPath };
 }
