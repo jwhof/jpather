@@ -37,11 +37,23 @@
 	
 	$: ({ displayLength, displayWidth } = $displayDimensions);
 
+	
+	/**
+	 * updates the robot length based on the provided value
+	 *
+	 * @param {number|string} value - the new length value to be set, can be a number or a string that can be parsed to a number.
+	 */
 	function updateRobotLength(value) {
 		const newValue = parseFloat(value) || 0;
 		$robotLength = parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
 	}
-
+	
+	
+	/**
+	 * updates the robot width based on the provided value
+	 * 
+	 * @param {number|string} value - the new width value to be set, can be a number or a string that can be parsed to a number.
+	 */
 	function updateRobotWidth(value) {
 		const newValue = parseFloat(value) || 0;
 		$robotWidth = parseFloat(($robotUnits === 'inches' ? newValue : newValue / 2.54).toFixed(2));
@@ -49,6 +61,7 @@
 
 
 	$: {
+		// convert angles based on selected units
 		const angleConversionFactor = $rotationUnits === 'degrees' ? (Math.PI / 180) : 1;
 		$paths.forEach(path => {
 			if (path.robotHeading === 'linear') {
@@ -59,7 +72,11 @@
 			}
 		});
 	}
-
+	/**
+	 * generates the Bezier curve for the specified path.
+	 *
+	 * @param {number} pathId - the ID of the path for which to generate the Bezier curve.
+	 */
 	function generateBezierCurve(pathId) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
@@ -70,6 +87,13 @@
 		});
 	}
 
+	/**
+	 * calculates a Bezier curve using the de Casteljau's algorithm.
+	 *
+	 * @param {Array} points - an array of control points for the Bezier curve.
+	 * @param {number} steps - the number of steps to divide the curve into.
+	 * @returns {Array} - an array of points representing the calculated Bezier curve.
+	 */
 	function calculateBezier(points, steps) {
 		let curve = [];
 		for (let t = 0; t <= 1; t += 1 / steps) {
@@ -78,6 +102,14 @@
 		curve.push(points[points.length - 1]);
 		return curve;
 	}
+
+	/**
+	 * computes a point on a Bezier curve using De Casteljau's algorithm.
+	 *
+	 * @param {Array<{x: number, y: number}>} points - an array of points defining the Bezier curve.
+	 * @param {number} t - the parameter t, where 0 <= t <= 1, representing the position on the curve.
+	 * @returns {{x: number, y: number}} - the computed point on the Bezier curve at parameter t.
+	 */
 
 	function deCasteljau(points, t) {
 		if (points.length === 1) return points[0];
@@ -90,6 +122,7 @@
 		return deCasteljau(newPoints, t);
 	}
 
+	// exports the control points and related settings to a JSON file
 	function exportControlPoints() {
 		const data = {
 			paths: $paths,
@@ -112,6 +145,7 @@
 		link.click();
 	}
 
+	// resets all settings to their default values
 	function resetToDefault() {
 		paths.set([]);
 		addPath();
@@ -127,6 +161,7 @@
 		shouldRepeatPath.set(true);
 	}
 
+	// imports control points and related settings from a JSON file
 	function importControlPoints() {
 		const input = document.createElement('input');
 		input.type = 'file';
@@ -152,6 +187,7 @@
 		input.click();
 	}
 
+	// adds a new path to the list of paths
 	function addPath() {
 	paths.update(paths => {
 		const newPath = new PathClass(paths.length);
@@ -175,6 +211,7 @@
 		});
 	}
 
+	// if there's no paths on mount, add a new path
 	onMount(() => {
 		paths.update(p => {
 			if (p.length === 0) {
@@ -184,17 +221,22 @@
 		});
 	});
 
-
+	/**
+	 * adds a control point to the specified path at the given index.
+	 *
+	 * @param {number} pathId - the ID of the path to which the control point will be added.
+	 * @param {number} index - the index at which the control point will be added (but idk why this is still here, we don't use it)
+	 */
 	function addControlPointToPathWithIndex(pathId, index) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
 			if (path) {
 				const angle = Math.random() * 2 * Math.PI;
 				const distance = 50;
+				// generate a random point in a circle from the center of the field
 				const x = 72 + Math.cos(angle) * distance;
 				const y = 72 + Math.sin(angle) * distance;
 
-			
 				if (path.controlPoints.length > 1) {
 					const insertIndex = path.controlPoints.length - 1;  
 					path.controlPoints.splice(insertIndex, 0, { x, y }); 
@@ -206,7 +248,13 @@
 		});
 	}
 
-
+	
+	/**
+	 * updates the color of a specific path identified by its ID.
+	 *
+	 * @param {string} pathId - the unique identifier of the path to update.
+	 * @param {string} color - the new color to set for the specified path.
+	 */
 	function updatePathColor(pathId, color) {
 		paths.update(paths => {
 			const path = paths.find(p => p.id === pathId);
@@ -218,12 +266,20 @@
 	}
 
 
+	/**
+	 * deletes a path by its ID and updates the paths store.
+	 * 
+	 * @param {number} pathId - the ID of the path to delete.
+	 */
+
 	function deletePath(pathId) {
 		paths.update(paths => {
 			const updatedPaths = paths.filter(path => path.id !== pathId);
 			updatedPaths.forEach((path, index) => {
 				path.id = index;
 			});
+
+			// check if auto-link paths is enabled and the path to be deleted is not the first or last path
 			if ($autoLinkPaths && pathId > 0 && pathId < paths.length - 1) {
 				const previousPath = updatedPaths[pathId - 1];
 				const nextPath = updatedPaths[pathId];
@@ -236,6 +292,7 @@
 		});
 	}
 
+	// plays the path animation
 	function playPath() {
 		if (isPlaying) return;
 		isPlaying = true;
@@ -243,18 +300,22 @@
 		currentPathIndex = isStartingFromBeginning ? 0 : Math.floor(scrubValue / 100 * $paths.length);
 		pathStartTime = Date.now() - (isStartingFromBeginning ? 0 : (scrubValue % (100 / $paths.length)) / 100 * animTime * 1000);
 
+		// if the path was paused, we need to adjust the start time to account for the time the path was paused
 		if (wasPaused) {
 			pathStartTime = Date.now() - (progress * pathAnimTime * 1000);
 		}
 
+		// set an interval to update the animation frame
 		intervalId = setInterval(() => {
 			elapsedTime = (Date.now() - pathStartTime) / 1000;
 			path = $paths[currentPathIndex];
 			pathAnimTime = animTime / $paths.length;
 			progress = elapsedTime / pathAnimTime;
 
+			// update the linear scrub value based on the current progress
 			linearScrubValue = ((currentPathIndex + progress) / $paths.length) * 100;
 
+			// add easing to the progress
 			if (progress < 0.5) {
 				progress = 2 * progress * progress;
 			} else {
@@ -264,6 +325,7 @@
 			scrubValue = ((currentPathIndex + progress) / $paths.length) * 100;
 			updateRobotPosition();
 
+			// check if the current path animation is complete
 			if (elapsedTime >= pathAnimTime) {
 				if (currentPathIndex + 1 >= $paths.length) {
 					if ($shouldRepeatPath) {
@@ -272,24 +334,24 @@
 						pausePath();
 					}
 				} else {
+					// move to the next path
 					currentPathIndex++;
 				}
 				pathStartTime = Date.now();
 			}
 		}, animInterval);
 	}
-
 	function updateRobotPosition() {
 		let totalPoints = 0;
 		$paths.forEach(path => {
-			totalPoints += path.bezierCurvePoints.length;
+			totalPoints += path.bezierCurvePoints.length; // calculate total points
 		});
 
 		let accumulatedPoints = 0;
 		for (let path of $paths) {
 			if (scrubValue <= (accumulatedPoints + path.bezierCurvePoints.length) / totalPoints * 100) {
 				const relativeScrubValue = (scrubValue - accumulatedPoints / totalPoints * 100) / (path.bezierCurvePoints.length / totalPoints * 100);
-				const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1));
+				const pointIndex = Math.floor(relativeScrubValue * (path.bezierCurvePoints.length - 1)); // find the point index
 				const point = path.bezierCurvePoints[pointIndex];
 				if (point) {
 					robotX = point.x;
@@ -300,7 +362,7 @@
 						if (path.robotHeading === 'tangential') {
 							const nextPoint = path.bezierCurvePoints[Math.min(pointIndex + 1, path.bezierCurvePoints.length - 1)];
 							const prevPoint = path.bezierCurvePoints[Math.max(pointIndex - 1, 0)];
-							let angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x);
+							let angle = Math.atan2(nextPoint.y - prevPoint.y, nextPoint.x - prevPoint.x); // calculate tangential angle
 							if (path.reverse) {
 								angle += Math.PI;
 							}
@@ -309,22 +371,23 @@
 						} else if (path.robotHeading === 'linear') {
 							const startAngle = path.startAngle || 0;
 							const endAngle = path.endAngle || 0;
-							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue;
+							const angle = startAngle + (endAngle - startAngle) * relativeScrubValue; // interpolate linear angle
 							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
 							robotLiveAngle = $rotationUnits === 'degrees' ? angle * (180 / Math.PI) : angle;
 						} else if (path.robotHeading === 'constant') {
 							const angle = path.constantAngle || 0;
-							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`;
+							robotElement.style.transform = `translate(-50%, 50%) rotate(${-angle + Math.PI / 2}rad)`; // set constant angle
 							robotLiveAngle = $rotationUnits === 'degrees' ? -angle * (180 / Math.PI) : -angle;
 						}
 					}
 				}
 				break;
 			}
-			accumulatedPoints += path.bezierCurvePoints.length;
+			accumulatedPoints += path.bezierCurvePoints.length; // accumulate points
 		}
 	}
 
+	// pauses the path animation by stopping the interval and updating state variables
 	function pausePath() {
 		isPlaying = false;
 		if (intervalId) {
@@ -345,7 +408,6 @@
 			currentPathIndex = pathIndex;
 			progress = adjustedProgress;
 
-
 			updateRobotPosition();
 		}
 	}
@@ -359,7 +421,7 @@
 	}
 
 
-
+	// add path on DOM content load
 	document.addEventListener('DOMContentLoaded', () => {
 		if ($paths.length === 0) {
 			addPath();
@@ -367,6 +429,7 @@
 		}
 	});
 
+	// on mouse down event listener to move control points
 	document.addEventListener('mousedown', (event) => {
 		const field = document.querySelector('.field');
 		const rect = field.getBoundingClientRect();
@@ -378,6 +441,7 @@
 		let selectedPathId2 = null;
 		let selectedPointIndex2 = null;
 
+		// update selected control points based on mouse position
 		$paths.forEach((path) => {
 			path.controlPoints.forEach((point, index) => {
 				const pointX = point.x / 144 * rect.width;
@@ -397,11 +461,13 @@
 
 		if (selectedPathId !== null && selectedPointIndex !== null) {
 			const movePoint = (moveEvent) => {
+				// clamp the control points to the field boundaries
 				const newMouseX = moveEvent.clientX - rect.left;
 				const newMouseY = moveEvent.clientY - rect.top;
 				let newX = newMouseX / rect.width * 144;
 				let newY = 144 - (newMouseY / rect.height * 144);
 
+				// apply hitbox offset to ensure the robot stays within the field
 				const hitboxOffsetX = $robotWidth / 2;
 				const hitboxOffsetY = $robotLength / 2;
 				newX = Math.max(hitboxOffsetX, Math.min(144 - hitboxOffsetX, newX));
@@ -427,10 +493,12 @@
 			};
 
 			const stopMove = () => {
+				// remove event listeners when the mouse button is released
 				document.removeEventListener('mousemove', movePoint);
 				document.removeEventListener('mouseup', stopMove);
 			};
 
+			// add event listeners for mouse move and mouse up
 			document.addEventListener('mousemove', movePoint);
 			document.addEventListener('mouseup', stopMove);
 		}
@@ -439,11 +507,14 @@
 	function checkAutoLinkControlPoints() {
 		if ($autoLinkPaths) {
 			paths.update(paths => {
+				// iterate through each path except the last one
 				for (let i = 0; i < paths.length - 1; i++) {
 					const currentPath = paths[i];
 					const nextPath = paths[i + 1];
+					// check if both current and next paths have control points
 					if (currentPath.controlPoints.length > 0 && nextPath.controlPoints.length > 0) {
 						const lastPoint = currentPath.controlPoints[currentPath.controlPoints.length - 1];
+						// set the first control point of the next path to the last control point of the current path
 						nextPath.controlPoints[0] = { ...lastPoint };
 						nextPath.bezierCurvePoints = calculateBezier(nextPath.controlPoints, 100);
 					}
@@ -465,6 +536,7 @@
 
 		let codeContent = '';
 
+		// add boilerplate code if the option is selected
 		if ($shouldHaveBoilerplate) {
 
 			codeContent += 'package your.package.here;\n\n';
@@ -512,6 +584,7 @@
 			const bezierType = path.controlPoints.length === 2 ? 'BezierLine' : 'BezierCurve';
 			codeContent += `    p${index + 1} = new Path(new ${bezierType}(\n                ${points}\n        )\n    );\n\n`;
 
+			// change code based on heading option selected
 			if (path.robotHeading === 'constant') {
 				const angle = $rotationUnits === 'degrees' ? `Math.toRadians(${path.constantAngleDegrees || 0})` : `${path.constantAngleDegrees || 0}`;
 				codeContent += `    p${index + 1}.setConstantHeadingInterpolation(${angle});\n\n`;
@@ -595,6 +668,7 @@
 	let offsetPaths = [];
 
 	$: {
+		// initialize offsetPaths with empty arrays for left, right, and main paths
 		offsetPaths = $paths.map(path => ({
 			left: [],
 			right: [],
@@ -603,18 +677,20 @@
 			controlPoints: path.controlPoints,
 		}));
 
+		// iterate through each path to generate hitbox paths and main paths
 		$paths.forEach((path, pathIndex) => {
 			if (path.controlPoints.length >= 2) { 
 				let mainPath = [];
 				
 				const { leftPath, rightPath } = generateHitboxPath(path.controlPoints, $robotWidth);
 
+				// generate main path points using getPointAt function
 				for (let t = 0; t <= 1; t += 0.01) {
 					const mainPoint = getPointAt(t, path.controlPoints);
 					mainPath.push(mainPoint);
 				}
 
-
+				// update offsetPaths with generated paths
 				offsetPaths[pathIndex].main = mainPath;
 				offsetPaths[pathIndex].left = leftPath;
 				offsetPaths[pathIndex].right = rightPath;

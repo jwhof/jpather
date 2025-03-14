@@ -14,6 +14,7 @@ export function factorial(n) {
 
 export function getPointAt(t, controlPoints) {
     if (controlPoints.length === 2) {
+        // linear interpolation for 2 points
         return {
             x: (1 - t) * controlPoints[0].x + t * controlPoints[1].x,
             y: (1 - t) * controlPoints[0].y + t * controlPoints[1].y
@@ -21,6 +22,7 @@ export function getPointAt(t, controlPoints) {
     }
 
     if (controlPoints.length === 1) {
+        // single point, return as is
         return controlPoints[0];
     }
 
@@ -31,6 +33,7 @@ export function getPointAt(t, controlPoints) {
         newPoints.push({ x, y });
     }
 
+    // recursive call for more than 2 points
     return getPointAt(t, newPoints);
 }
 
@@ -73,7 +76,7 @@ export function generateHitboxPath(controlPoints, width) {
     const leftPath = [];
     const rightPath = [];
 
-    // Case 1: Linear Path (2 Points)
+    // case 1: linear path (2 points)
     if (controlPoints.length === 2) {
         console.log("generating LINEAR hitbox for 2pt path");
         for (let t = 0; t <= 1; t += 0.01) {
@@ -85,7 +88,7 @@ export function generateHitboxPath(controlPoints, width) {
             rightPath.push({ x: x - normal.x * (width / 2), y: y - normal.y * (width / 2) });
         }
     }
-    // Case 2: Bézier Curve (3+ Points)
+    // case 2: bézier curve (3+ points)
     else {
         console.log("generating Bézier hitbox");
         for (let t = 0; t <= 1; t += 0.01) {
