@@ -562,8 +562,8 @@
 		}
 
 		codeContent += 'private final Pose startPose = new Pose(';
-		codeContent += robotX.toFixed(3) + ', ';
-		codeContent += robotY.toFixed(3) + ', ';
+		codeContent += $paths[0].controlPoints[0].x.toFixed(3) + ', ';
+		codeContent += $paths[0].controlPoints[0].y.toFixed(3) + ', ';
 		codeContent += $rotationUnits === 'degrees' ? `Math.toRadians(${robotLiveAngle.toFixed(3)})` : robotLiveAngle.toFixed(3);
 		codeContent += ');\n\n';
 
