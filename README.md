@@ -1,6 +1,7 @@
 # JPather
+A pathing visualizer for pedro pathing that I made during the '24-'25 season of FTC (may not be up to date with latest pedro versions). 
 
-# Install procedure;
+# fresh install procedure
 run npm install --save-dev rollup-plugin-svelte
 
 ## TODO:
