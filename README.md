@@ -1,40 +1,96 @@
 # JPather
-A pathing visualizer for pedro pathing that I made during the '24-'25 season of FTC (may not be up to date with latest pedro versions). 
 
-# fresh install procedure
-run npm install --save-dev rollup-plugin-svelte
+**A web-based path visualization and planning tool for autonomous FTC robots (2024–2025 season)**  
+[www.jpather.autos](https://www.jpather.autos) • [GitHub Repo](https://github.com/jwhof/jpather)
 
-## TODO:
-- [x] add greyed out trash can so user cant delete only path
-- [x] fix bugged z-index of robot over curve
-- [x] ES_ add path organization up/down functionality
-- [x] less border radii so its less kid friendly
-- [x] increase space b/t trash and add buttons
-- [x] fix scrub bar 0% and 100%'s are offset
-- [x] add playback button
-- [x] fix non-linear time scrub bar
-- [ ] add scrubbing while playing
-- [x] add user-facing option for infinite looping
-- [x] fix path deletion indexing problem
-- [x] ES_ add autoLink paths together
-- [x] add delete autoLink
-- [ ] add update path links on autoLink enabling
-- [x] add labels for X and Y on the control point menu + bold the numbers?
-- [x] add units for robot length and width
-- [ ] add dark mode
-- [x] ES_add control point deletion option
-- [x] replace robot image
-- [x] ES_ add robot bounding box --> points are unable to be dragged outside
-- [x] add motion blur
-- [ ] ES_ add different path colors in scrubbing bar
-- [x] add margin-bottom between paths
-- [x] ES_ add robot heading along path
-- [ ] ES_ add multiple path imports ontop of each other
-- [ ] ES_ add robot hitboxes
-- [x] fix input box bug
-- [x] fix relative robot heading bug
-- [x] add auto inch/cm conversion on change
-- [x] add tangential reverse
-- [ ] add path duplication
-- [ ] add PathChains (paths, indented, etc)
-- [x] add current path index
+
+## Highlights
+
+- Smooth Bezier-curve trajectory generation for FTC autonomous routines  
+- Real-time robot simulation and field visualization  
+- Interactive path editing with playback and timeline scrubbing  
+- JSON and code export for integration with FTC SDK-based projects  
+- Built with Svelte, JavaScript, and SVG rendering  
+- Deployed at [jpather.autos](https://www.jpather.autos)
+
+## Overview
+
+JPather is a lightweight trajectory visualization tool that helps FIRST Tech Challenge (FTC) robotics teams design and test autonomous paths directly in the browser.  
+It provides an intuitive way to define Bezier curves, simulate robot motion, and export code for direct use in teams' codebase.
+
+
+## Features
+
+### Core
+
+- Generate smooth Bezier trajectories with adaptive subdivision  
+- Visualize paths directly on an FTC field image  
+- Playback robot motion and heading over time  
+- Scrub through trajectories with a timeline slider  
+- Configure robot heading (tangential, fixed, or interpolated)
+
+### Advanced
+
+- Define multiple sequential paths in a single scene  
+- Export trajectories as JSON or FTC-ready code  
+- Import and share saved paths between teams  
+- Visualize robot width and footprint via dynamic hitboxes  
+- Persistent local storage — paths remain saved between sessions  
+- Switch between inches/centimeters and radians/degrees  
+
+
+## Technical Overview
+
+| Component | Description |
+|------------|-------------|
+| **Frontend** | Built with [Svelte](https://svelte.dev) for fast, reactive UIs |
+| **Curve Engine** | Adaptive subdivision with memoization for precise Bezier evaluation |
+| **State Handling** | Svelte writable stores synchronized with `localStorage` |
+| **Rendering** | SVG for path, control point, and robot geometry drawing |
+| **File System** | JSON import/export via Blob and URL APIs |
+| **Deployment** | Hosted on GitHub Pages ([jpather.autos](https://www.jpather.autos)) |
+
+**Core Files**
+
+- `App.svelte` – main visualization and simulation logic  
+- `Path.js` – object-oriented representation of each curve  
+- `bezier.js` – adaptive curve calculation and geometry utilities  
+- `stores.js` – persistent state management  
+
+
+## Example Path Export
+
+```json
+{
+  "id": 1,
+  "controlPoints": [
+    {"x": 37.32, "y": 96.71},
+    {"x": 30.40, "y": 9.00},
+    {"x": 118.27, "y": 122.08}
+  ],
+  "robotHeading": "tangential",
+  "color": "rgb(200, 237, 128)"
+}
+```
+
+
+## Installation
+Clone the repo:
+```bash
+git clone https://github.com/jwhof/jpather.git
+cd jpather
+```
+Install dependencies:
+```bash
+npm install
+npm install --save-dev rollup-plugin-svelte
+```
+Run locally:
+```bash
+npm run dev
+```
+
+## License
+
+MIT License
+Field Image Adapted From Team Juice #16236
